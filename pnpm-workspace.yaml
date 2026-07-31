@@ -1,6 +1,14 @@
-# Both are transitive Next.js/ESLint deps that need their native binaries built:
-# sharp powers next/image optimization, unrs-resolver is the native resolver
-# behind eslint-plugin-import-x. Left unanswered, pnpm exits 1 on every script.
+# No dependency in this repo needs a lifecycle script to run on install.
+#
+# Both packages below ship prebuilt platform binaries as optional dependencies
+# (@img/sharp-*, @unrs/resolver-binding-*); their install scripts are only a
+# source-build fallback. Denying them costs nothing -- lint, test and build are
+# all green from an empty node_modules -- and keeps `pnpm install` free of
+# third-party code execution.
+#
+# Leaving an entry unanswered is not an option: pnpm writes a
+# "set this to true or false" placeholder and then exits 1 on every script,
+# so a new build script fails the install loudly rather than running silently.
 allowBuilds:
-  sharp: true
-  unrs-resolver: true
+  sharp: false
+  unrs-resolver: false
