@@ -1,6 +1,6 @@
+# Both are transitive Next.js/ESLint deps that need their native binaries built:
+# sharp powers next/image optimization, unrs-resolver is the native resolver
+# behind eslint-plugin-import-x. Left unanswered, pnpm exits 1 on every script.
 allowBuilds:
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+  sharp: true
+  unrs-resolver: true
