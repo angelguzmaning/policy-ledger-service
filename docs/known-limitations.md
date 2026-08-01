@@ -16,6 +16,18 @@ Source: [`docs/spec/api-contract.md`](spec/api-contract.md#known-limitations) ([
 - **Explanation templates are English-only** — fixed-order clause concatenation does not survive translation.
 - **No rate limiting or payload size cap** — an oversized body reaches Zod before rejection.
 
+## Test plan and CI
+
+Source: [`docs/spec/test-plan-and-ci.md`](spec/test-plan-and-ci.md#7-known-limitations) ([#11](https://github.com/angelguzmaning/policy-ledger-service/issues/11))
+
+- **The policy lock's behaviour under contention is argued, not tested** — no test drives two concurrent writers; a regression surfaces as duplicate rows under load, not as a red test.
+- **No coverage threshold** — coverage is measured every run and gated by nothing, so it can regress silently.
+- **`pnpm audit --audit-level=high` is advisory** — the four known `next`-pinned build-time advisories keep the gate at `critical`.
+- **The seed's reproduction of the brief's Expected Output is not gated** — it is demonstrated by script, not asserted in CI.
+- **Route handlers are not executed by the suite** — no test boots Next; they are held to three statements each so the untested surface stays reviewable.
+- **`fileParallelism: false`** — integration runtime grows linearly with test files.
+- **The tamper demo requires dropping the append-only trigger inside the test** — you have to disable a control to break the chain, which is the point.
+
 <!--
 Rows for #5 (proration), #6 (ledger), #7 (idempotency) and #8 (hash chain) land when their ADRs are authored
 under docs/adr/ — see #17.
