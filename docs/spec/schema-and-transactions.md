@@ -161,7 +161,7 @@ negative `endorsement_adjustment` (#5). There is **no `status` column** — stat
 CREATE TABLE payments (
   payment_id           text PRIMARY KEY CHECK (payment_id ~ '^[A-Za-z0-9_-]{1,64}$'),
   policy_id            text     NOT NULL REFERENCES policies (policy_id),
-  external_payment_id  text     NOT NULL,
+  external_payment_id  text     NOT NULL UNIQUE,
   amount_cents         bigint   NOT NULL CHECK (amount_cents > 0),
   currency             char(3)  NOT NULL CHECK (currency IN ('USD')),
   received_at          text     NOT NULL CHECK (received_at ~
@@ -188,6 +188,16 @@ CREATE TABLE payment_applications (
 rejection is a `422` raised in the service _before_ the insert, and this constraint is the backstop
 that refuses the row anyway if that check is ever removed or bypassed. The database refuses invalid
 data even when the application has a bug.
+
+`external_payment_id` is `UNIQUE` — **an addition inherited from #10, reconciled here.** `payment_id`
+(the primary key) is delivery-retry identity: the idempotency key from #7. `external_payment_id` is a
+second, independent fact — the upstream system's own identity for the payment — and the two coincide in
+the sample data but are not the same column for a reason: without this constraint, the same real-world
+payment redelivered under a fresh `payment_id` would insert as a brand-new row and debit `cash` a second
+time with nothing to notice. The `UNIQUE` constraint is what `409 ExternalPaymentIdConflict` (#10) is
+raised against; see ADR-0006 for the full reasoning and the rejected one-identifier alternative. The
+inline `UNIQUE` gives the column its own index for free — no separate `CREATE INDEX` needed for the
+`409` lookup path.
 
 ### 0003 — ledger
 
@@ -478,7 +488,8 @@ erDiagram
         text document_type "endorsement_adjustment | premium_credit"
     }
     payments {
-        text payment_id PK "= idempotency key"
+        text payment_id PK "= idempotency key (#7)"
+        text external_payment_id "UNIQUE, distinct from PK (#10, reconciled here)"
         char currency "CHECK IN ('USD') = the backstop"
         text received_at "text, strict regex"
     }
