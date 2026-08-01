@@ -7,7 +7,10 @@ import { formatMoney } from '@/server/domain/formatMoney'
 export interface LatestEndorsementFacts {
   id: string
   effectiveDate: string
+  /** The prorated amount billed (or credited) -- zero iff no billing document was produced. */
   deltaCents: number
+  /** The full annual-premium change (new - previous) -- what "raised/lowered by" reports, distinct from the prorated `deltaCents` billed. */
+  annualPremiumDeltaCents: number
 }
 
 export interface HistoryFacts {
@@ -44,16 +47,17 @@ function policyClause(facts: SummaryFacts): string {
 
 function endorsementClause(facts: SummaryFacts): string | null {
   if (facts.endorsementCount === 0 || !facts.latestEndorsement) return null
-  const { id, effectiveDate, deltaCents } = facts.latestEndorsement
+  const { id, effectiveDate, deltaCents, annualPremiumDeltaCents } = facts.latestEndorsement
   const n = facts.endorsementCount
 
   if (deltaCents === 0) {
     return `${n} endorsement(s) have been applied, most recently ${id} effective ${effectiveDate}, which left the annual premium unchanged and produced no billing document.`
   }
 
-  const direction = deltaCents > 0 ? 'raised' : 'lowered'
-  const amount = formatMoney(Math.abs(deltaCents), facts.currency)
-  return `${n} endorsement(s) have been applied, most recently ${id} effective ${effectiveDate}, which ${direction} the annual premium by ${amount} and billed ${amount} pro-rata.`
+  const direction = annualPremiumDeltaCents >= 0 ? 'raised' : 'lowered'
+  const annualDelta = formatMoney(Math.abs(annualPremiumDeltaCents), facts.currency)
+  const billed = formatMoney(Math.abs(deltaCents), facts.currency)
+  return `${n} endorsement(s) have been applied, most recently ${id} effective ${effectiveDate}, which ${direction} the annual premium by ${annualDelta} and billed ${billed} pro-rata.`
 }
 
 function balanceClause(facts: SummaryFacts): string {

@@ -273,8 +273,8 @@ verification (including a test that tampering itself requires disabling the appe
 **No test boots Next** — a route handler is three statements, each covered elsewhere. 143 tests (unit +
 integration) pass locally against a real Postgres. Coverage is measured every run
 (`coverage.include: ['src/server/**']`) and never gated by a threshold — a stated position, not a silent
-gap; the number this build actually achieves is **84.6% statements / 82.4% branches / 87.2% functions /
-86.4% lines** (`pnpm test:coverage`). The two files sitting near 0% by design are `src/server/api/http.ts`
+gap; the number this build actually achieves is **84.9% statements / 82.6% branches / 87.4% functions /
+86.7% lines** (`pnpm test:coverage`). The two files sitting near 0% by design are `src/server/api/http.ts`
 and `writeHandler.ts` — the route-assembly layer the "no test boots Next" rule deliberately leaves
 untested, held to a handful of lines each so the gap stays reviewable. One CI job, cheapest-first
 (`install → format:check → lint → typecheck → test:coverage → build → audit`), against a real Postgres

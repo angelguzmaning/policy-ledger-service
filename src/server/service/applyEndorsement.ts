@@ -18,6 +18,7 @@ import {
   getOpenBalanceCents,
   selectPolicyForUpdate,
   systemClock,
+  toApiBillingDocumentType,
   type Clock,
 } from '@/server/service/shared'
 import type { BillingDocumentSummary, EndorsementResult } from '@/server/service/types'
@@ -75,7 +76,7 @@ async function loadEndorsementResult(
   const billingDocument: BillingDocumentSummary | null = billingRow
     ? {
         id: billingRow.billing_document_id,
-        type: billingRow.document_type,
+        type: toApiBillingDocumentType(billingRow.document_type),
         amount_cents: Number(billingRow.amount_cents),
         status: deriveDocumentStatus(
           Number(billingRow.amount_cents),

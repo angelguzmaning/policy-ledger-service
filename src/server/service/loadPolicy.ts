@@ -6,6 +6,7 @@ import {
   derivePaymentStatus,
   getOpenBalanceCents,
   humanizeErrorCode,
+  toApiBillingDocumentType,
   type PaymentStatus,
 } from '@/server/service/shared'
 import { loadPolicyEvents } from '@/server/service/verifyHistory'
@@ -26,6 +27,8 @@ interface EndorsementRow {
   endorsement_id: string
   effective_date: string
   delta_cents: string
+  previous_annual_premium_cents: string
+  new_annual_premium_cents: string
   policy_seq: number
   billing_document_id: string | null
   document_type: 'endorsement_adjustment' | 'premium_credit' | null
@@ -105,7 +108,8 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
   const idempotencyResults = await idempotencyResultsByBusinessId(db, policyId)
 
   const { rows: endorsementRows } = await db.query<EndorsementRow>(
-    `SELECT e.endorsement_id, e.effective_date, e.delta_cents, e.policy_seq,
+    `SELECT e.endorsement_id, e.effective_date, e.delta_cents,
+            e.previous_annual_premium_cents, e.new_annual_premium_cents, e.policy_seq,
             bd.billing_document_id, bd.document_type, bd.amount_cents AS bd_amount_cents,
             (SELECT COALESCE(SUM(pa.amount_cents), 0) FROM payment_applications pa
               WHERE pa.billing_document_id = bd.billing_document_id) AS paid_cents
@@ -124,13 +128,23 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
       row.billing_document_id && row.document_type && row.bd_amount_cents !== null
         ? {
             id: row.billing_document_id,
-            type: row.document_type,
+            type: toApiBillingDocumentType(row.document_type),
             amount_cents: Number(row.bd_amount_cents),
             status: deriveDocumentStatus(Number(row.bd_amount_cents), Number(row.paid_cents ?? 0)),
           }
         : null,
     idempotency_result: idempotencyResults.get(row.endorsement_id) ?? 'applied',
   }))
+
+  // Not part of the public view -- only feeds the explanation's "raised/lowered
+  // by" clause, which reports the full annual delta, distinct from the
+  // prorated `delta_cents` billed (see docs/spec/api-contract.md §4/§9).
+  const annualPremiumDeltaByEndorsementId = new Map(
+    endorsementRows.map((row) => [
+      row.endorsement_id,
+      Number(row.new_annual_premium_cents) - Number(row.previous_annual_premium_cents),
+    ]),
+  )
 
   const { rows: paymentRows } = await db.query<PaymentRow>(
     `SELECT p.payment_id, p.external_payment_id, p.amount_cents,
@@ -151,26 +165,37 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
 
   const openBalanceCents = await getOpenBalanceCents(db, policyId)
 
-  const { rows: ledgerTxRows } = await db.query<{
+  // Direction is read off the sign of amount_cents in application code, once
+  // -- no CASE expression anywhere in schema, service or API (ADR-0002).
+  const { rows: ledgerRows } = await db.query<{
+    ledger_transaction_id: string
     source_id: string
-    debits_cents: string
-    credits_cents: string
+    posted_at: string
+    amount_cents: string
   }>(
-    `SELECT lt.source_id,
-            SUM(CASE WHEN le.amount_cents > 0 THEN le.amount_cents ELSE 0 END) AS debits_cents,
-            SUM(CASE WHEN le.amount_cents < 0 THEN -le.amount_cents ELSE 0 END) AS credits_cents
+    `SELECT lt.ledger_transaction_id, lt.source_id, lt.posted_at::text AS posted_at, le.amount_cents
        FROM ledger_transactions lt
        JOIN ledger_entries le ON le.ledger_transaction_id = lt.ledger_transaction_id
       WHERE lt.policy_id = $1
-      GROUP BY lt.ledger_transaction_id, lt.source_id
-      ORDER BY MIN(lt.posted_at)`,
+      ORDER BY lt.posted_at, lt.ledger_transaction_id`,
     [policyId],
   )
-  const ledgerTransactions = ledgerTxRows.map((row) => ({
-    source: row.source_id,
-    debits_cents: Number(row.debits_cents),
-    credits_cents: Number(row.credits_cents),
-  }))
+  const ledgerByTransaction = new Map<
+    string,
+    { source: string; debits_cents: number; credits_cents: number }
+  >()
+  for (const row of ledgerRows) {
+    const amount = Number(row.amount_cents)
+    const entry = ledgerByTransaction.get(row.ledger_transaction_id) ?? {
+      source: row.source_id,
+      debits_cents: 0,
+      credits_cents: 0,
+    }
+    if (amount > 0) entry.debits_cents += amount
+    else entry.credits_cents += -amount
+    ledgerByTransaction.set(row.ledger_transaction_id, entry)
+  }
+  const ledgerTransactions = [...ledgerByTransaction.values()]
   const ledgerBalanced = ledgerTransactions.every((t) => t.debits_cents === t.credits_cents)
 
   const events = await loadPolicyEvents(db, policyId)
@@ -224,6 +249,7 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
           id: latestEndorsement.id,
           effectiveDate: latestEndorsement.effective_date,
           deltaCents: latestEndorsement.delta_cents,
+          annualPremiumDeltaCents: annualPremiumDeltaByEndorsementId.get(latestEndorsement.id) ?? 0,
         }
       : null,
     balanceCents: openBalanceCents,

@@ -39,7 +39,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface BillingDocumentView {
   id: string
-  type: 'endorsement_adjustment' | 'premium_credit'
+  type: 'premium_charge' | 'premium_credit'
   amount_cents: number
   status: 'open' | 'partially_paid' | 'paid'
 }

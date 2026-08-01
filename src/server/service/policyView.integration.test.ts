@@ -97,7 +97,7 @@ describe("GET /policies/:policyId view -- reproduces the brief's sample state", 
       effective_date: '2026-07-01',
       delta_cents: 12_099,
       billing_document: {
-        type: 'endorsement_adjustment', // positive delta keeps the brief's literal type
+        type: 'premium_charge', // API-facing type; DB keeps `endorsement_adjustment` (ADR-0005 deviation)
         amount_cents: 12_099,
         status: 'paid',
       },

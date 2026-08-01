@@ -9,7 +9,12 @@ const base: SummaryFacts = {
   termStart: '2026-01-01',
   termEnd: '2027-01-01',
   endorsementCount: 1,
-  latestEndorsement: { id: 'END-2001', effectiveDate: '2026-07-01', deltaCents: 12_099 },
+  latestEndorsement: {
+    id: 'END-2001',
+    effectiveDate: '2026-07-01',
+    deltaCents: 12_099,
+    annualPremiumDeltaCents: 24_000,
+  },
   balanceCents: 0,
   openDocumentCount: 0,
   history: { valid: true, eventCount: 3, verifiedThroughSeq: 3 },
@@ -25,24 +30,36 @@ describe('buildExplanation -- clause 1 (policy), always present', () => {
 })
 
 describe('buildExplanation -- clause 2 (endorsement)', () => {
-  it('raised, ≥1 applied', () => {
+  it('raised, >=1 applied -- the full annual delta and the pro-rata billed amount are distinct figures', () => {
     expect(buildExplanation(base)).toContain(
-      'most recently END-2001 effective 2026-07-01, which raised the annual premium by $120.99 USD and billed $120.99 USD pro-rata.',
+      'most recently END-2001 effective 2026-07-01, which raised the annual premium by $240.00 USD and billed $120.99 USD pro-rata.',
     )
   })
 
   it('lowered, ≥1 applied', () => {
     const facts: SummaryFacts = {
       ...base,
-      latestEndorsement: { id: 'END-2002', effectiveDate: '2026-08-01', deltaCents: -500 },
+      latestEndorsement: {
+        id: 'END-2002',
+        effectiveDate: '2026-08-01',
+        deltaCents: -500,
+        annualPremiumDeltaCents: -1_000,
+      },
     }
-    expect(buildExplanation(facts)).toContain('which lowered the annual premium by $5.00 USD')
+    expect(buildExplanation(facts)).toContain(
+      'which lowered the annual premium by $10.00 USD and billed $5.00 USD pro-rata',
+    )
   })
 
   it('zero-delta latest', () => {
     const facts: SummaryFacts = {
       ...base,
-      latestEndorsement: { id: 'END-2003', effectiveDate: '2026-09-01', deltaCents: 0 },
+      latestEndorsement: {
+        id: 'END-2003',
+        effectiveDate: '2026-09-01',
+        deltaCents: 0,
+        annualPremiumDeltaCents: 0,
+      },
     }
     expect(buildExplanation(facts)).toContain(
       'most recently END-2003 effective 2026-09-01, which left the annual premium unchanged and produced no billing document.',

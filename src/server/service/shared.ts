@@ -105,6 +105,14 @@ export async function appendPolicyEvent(
   return { seq, eventHash: hash }
 }
 
+export type DbDocumentType = 'endorsement_adjustment' | 'premium_credit'
+export type ApiDocumentType = 'premium_charge' | 'premium_credit'
+
+/** DB `document_type` -> the API-facing `type` (docs/spec/api-contract.md §6's deviations table). */
+export function toApiBillingDocumentType(documentType: DbDocumentType): ApiDocumentType {
+  return documentType === 'endorsement_adjustment' ? 'premium_charge' : 'premium_credit'
+}
+
 export type BillingDocumentStatus = 'open' | 'partially_paid' | 'paid'
 
 export function deriveDocumentStatus(
