@@ -1,0 +1,45 @@
+[
+  {
+    "type": "endorsement.requested",
+    "idempotency_key": "END-2001",
+    "policy_id": "POL-1001",
+    "effective_date": "2026-07-01",
+    "new_annual_premium_cents": 144000,
+    "reason": "Water-shutoff discount removed"
+  },
+  {
+    "type": "endorsement.requested",
+    "idempotency_key": "END-2001",
+    "policy_id": "POL-1001",
+    "effective_date": "2026-07-01",
+    "new_annual_premium_cents": 144000,
+    "reason": "Water-shutoff discount removed"
+  },
+  {
+    "type": "payment.received",
+    "idempotency_key": "PAY-9001",
+    "policy_id": "POL-1001",
+    "external_payment_id": "PAY-9001",
+    "amount_cents": 12099,
+    "currency": "USD",
+    "received_at": "2026-07-03T18:30:00Z"
+  },
+  {
+    "type": "payment.received",
+    "idempotency_key": "PAY-9001",
+    "policy_id": "POL-1001",
+    "external_payment_id": "PAY-9001",
+    "amount_cents": 12099,
+    "currency": "USD",
+    "received_at": "2026-07-03T18:30:00Z"
+  },
+  {
+    "type": "payment.received",
+    "idempotency_key": "PAY-9002",
+    "policy_id": "POL-1001",
+    "external_payment_id": "PAY-9002",
+    "amount_cents": 5000,
+    "currency": "EUR",
+    "received_at": "2026-07-04T10:00:00Z"
+  }
+]

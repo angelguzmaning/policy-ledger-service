@@ -10,5 +10,9 @@
 # "set this to true or false" placeholder and then exits 1 on every script,
 # so a new build script fails the install loudly rather than running silently.
 allowBuilds:
+  # esbuild's install script fetches its platform binary -- there is no
+  # prebuilt-optional-dependency fallback the way sharp/unrs-resolver have,
+  # so tsx/vitest do not run without it.
+  esbuild: true
   sharp: false
   unrs-resolver: false

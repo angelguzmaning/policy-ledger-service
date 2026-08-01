@@ -18,9 +18,9 @@ identifiers — the idempotency key and the upstream system's own payment id —
 
 > **Decidable from the request alone → `400`. Requires policy state → `422`.**
 
-`currency` is Zod-validated for *shape only* (`/^[A-Z]{3}$/`), never `z.literal('USD')` — pinning it would
+`currency` is Zod-validated for _shape only_ (`/^[A-Z]{3}$/`), never `z.literal('USD')` — pinning it would
 turn `PAY-9002` into a `400 InvalidRequest` and delete the brief's own named `currency mismatch` failure
-path, which can only exist if a non-`USD` currency is a **valid-shaped** request that the *service* then
+path, which can only exist if a non-`USD` currency is a **valid-shaped** request that the _service_ then
 rejects against policy state. The rule also relocated the ticket's own first draft: a body `policy_id` that
 disagrees with the path is decidable without touching the database, so `PolicyIdMismatch` is **`400`, not
 `422`** — a rule bent on its own first application is not a rule.
@@ -96,7 +96,7 @@ is already recorded under a different `payment_id`.
   checked, and the cash gets posted twice.
 - **Rejecting a duplicate `external_payment_id` with the same `422`-style "requires policy state" status**
   instead of a distinct `409`. Rejected for consistency with `IdempotencyKeyConflict`: both are conflicts
-  over *identity*, not over policy business rules, and `409` is the status HTTP reserves for exactly that
+  over _identity_, not over policy business rules, and `409` is the status HTTP reserves for exactly that
   class of conflict.
 
 ## Known limitations

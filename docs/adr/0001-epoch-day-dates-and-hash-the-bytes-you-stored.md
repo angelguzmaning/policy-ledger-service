@@ -17,7 +17,7 @@ the same outputs on every run, on every machine, forever — replay depends on i
    and DST — none of which belong in a proration calculation that must be reproducible from a seed file
    years later on a different machine.
 2. **Timestamps that feed the hash chain.** `recorded_at` on a `policy_events` row is part of the
-   `event_hash` preimage. If the stored value can be *re-rendered* differently depending on session state,
+   `event_hash` preimage. If the stored value can be _re-rendered_ differently depending on session state,
    the hash becomes unstable even though nothing about the event changed.
 
 ## Decision
@@ -55,7 +55,7 @@ indexing.
 ## Rejected alternatives
 
 - **Let `pg` parse `DATE` into a JS `Date` and normalize with `.toISOString()` at the boundary.**
-  Rejected because normalization happens *after* the local-midnight conversion has already run — a date
+  Rejected because normalization happens _after_ the local-midnight conversion has already run — a date
   near a DST boundary or a UTC offset can shift by a day before the normalization code ever sees it. The
   bug is upstream of anywhere a fix could be applied.
 - **Store `recorded_at` as `timestamptz` and pin the session `TimeZone` to `UTC` everywhere (app, tests,

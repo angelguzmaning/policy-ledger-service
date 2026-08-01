@@ -8,7 +8,7 @@ chart of accounts, and where balance is enforced).
 ## Context
 
 The ledger must implement real double-entry bookkeeping: every transaction's legs sum to zero, every
-transaction has at least two legs, and a negative endorsement delta must post through the *same* code path
+transaction has at least two legs, and a negative endorsement delta must post through the _same_ code path
 as a positive one rather than a parallel branch. Two decisions were contested: how a leg's direction
 (debit vs. credit) is represented, and where "this transaction balances" is actually enforced.
 
@@ -97,18 +97,18 @@ shape.
 
 A `DEFERRABLE INITIALLY DEFERRED` constraint trigger (`assert_transaction_balanced`) fires once per
 `ledger_transaction_id` **at `COMMIT`**, checking `SUM(amount_cents) = 0 AND COUNT(*) >= 2`. Deferral is
-load-bearing: legs are inserted one row at a time, so an *immediate* trigger would reject every valid write
+load-bearing: legs are inserted one row at a time, so an _immediate_ trigger would reject every valid write
 partway through. Because the check runs at commit, the service can insert legs in any order and the
 transaction stands or falls as a whole.
 
 The reasoning this survives on: **a database transaction gives atomicity, not correctness.** A sign error
-or a rounding bug commits atomically and *wrongly* — `BEGIN`/`COMMIT` guarantees all-or-nothing, not
+or a rounding bug commits atomically and _wrongly_ — `BEGIN`/`COMMIT` guarantees all-or-nothing, not
 zero-sum. `CHECK` constraints are per-row and structurally cannot express a cross-row `SUM`, which is why
 this needed a trigger rather than a `CHECK (amount_cents ...)` clause.
 
 `GET /ledger` then **proves** balance rather than asserting it: `account_balances`, `sum_all_entries`, and
 an `unbalanced_transactions` probe (`GROUP BY ledger_transaction_id HAVING SUM(amount_cents) <> 0`) that is
-always empty *by construction*, given the trigger — the on-call note (README) points at this exact query
+always empty _by construction_, given the trigger — the on-call note (README) points at this exact query
 as the first thing to run at 3am.
 
 ## Rejected alternatives

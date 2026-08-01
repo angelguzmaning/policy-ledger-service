@@ -83,8 +83,8 @@ after every open document is settled is `unapplied_cents` and is not an error (i
 An immutable, append-only row in `policy_events` recording one accepted command against a policy:
 `policy_created` (seq 1, always), `endorsement_applied`, or `payment_recorded`. Granularity is the
 **accepted command**, not each side-effect row — one endorsement is one event, carrying the endorsement id,
-billing document id, and ledger transaction id in its `payload`. The chain records *decisions*; the ledger
-records their *arithmetic*. See **Hash chain**.
+billing document id, and ledger transaction id in its `payload`. The chain records _decisions_; the ledger
+records their _arithmetic_. See **Hash chain**.
 
 ## Hash chain
 
@@ -102,7 +102,7 @@ localized (`seq`, one of four reasons, expected vs. stored hash). See ADR-0005.
 The mechanism that makes a retried `POST` safe. **The business id is the idempotency key** — `END-2001`,
 `PAY-9001` — arriving in the request body, never a separate `Idempotency-Key` header, and never
 server-generated. It is the row's own primary key, so uniqueness is enforced by the database `UNIQUE`
-constraint the primary key already gives you. Whether a redelivery is the *same* request or a *conflicting*
+constraint the primary key already gives you. Whether a redelivery is the _same_ request or a _conflicting_
 one is decided by comparing a stored `request_fingerprint` (SHA-256 of the canonicalized, validated
 request) against a freshly computed one: match → `200 duplicate ignored`; mismatch → `409
 IdempotencyKeyConflict`. A rejected request (any `4xx`) rolls back and **never consumes its key** — the
@@ -113,7 +113,7 @@ same id can be resubmitted with corrected data. See ADR-0003.
 A record in `inbound_requests` of every endorsement/payment `POST` that reached the service, written on a
 **separate database connection outside the business transaction**, so a rolled-back write still leaves a
 receipt. Carries `outcome` (`accepted` / `rejected`), the HTTP status, the error code if any, and the
-request body verbatim. This is what lets a wrong-currency 3am payment be *discoverable* rather than
+request body verbatim. This is what lets a wrong-currency 3am payment be _discoverable_ rather than
 silently vanish, and what lets `GET /policies/:id` report `rejected_events` and per-item
 `idempotency_result` without treating a refusal as part of the policy's own history. It carries no foreign
 key to `policies`, deliberately — a request naming a policy that doesn't exist is exactly the kind that

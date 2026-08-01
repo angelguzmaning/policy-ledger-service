@@ -1,5 +1,7 @@
 # Policy Ledger Service
 
+[![CI](https://github.com/angelguzmaning/policy-ledger-service/actions/workflows/ci.yml/badge.svg)](https://github.com/angelguzmaning/policy-ledger-service/actions/workflows/ci.yml)
+
 A focused slice of a homeowners-insurance Policy Administration System: mid-term endorsement → prorated
 premium delta → billing document → received-payment ingestion → balanced double-entry ledger →
 hash-chained, append-only policy history, plus a minimal operator UI. Built for Base Labs's Fullstack
@@ -98,8 +100,8 @@ Raw SQL migrations, no ORM — full DDL, transaction boundaries, and the atomici
 
 **The ID rule, stated once:** a primary key is the thing that names the row to whoever has to name it —
 caller-supplied natural key where the caller must name it (`policies`, `endorsements`, `payments`;
-for the latter two, that key *is* the idempotency key), server-minted `uuid` where nobody outside the
-database names it, composite where position *is* identity (`policy_events (policy_id, seq)`), `bigserial`
+for the latter two, that key _is_ the idempotency key), server-minted `uuid` where nobody outside the
+database names it, composite where position _is_ identity (`policy_events (policy_id, seq)`), `bigserial`
 for a gap-tolerant log (`inbound_requests`).
 
 ```mermaid
@@ -209,7 +211,7 @@ flowchart LR
   AR --> OB
 ```
 
-**Idempotency:** the business id (`END-2001`, `PAY-9001`) *is* the idempotency key — no separate header, no
+**Idempotency:** the business id (`END-2001`, `PAY-9001`) _is_ the idempotency key — no separate header, no
 token table. A stored `request_fingerprint` decides replay (`200 duplicate ignored`) vs. conflict
 (`409 IdempotencyKeyConflict`); a rejected request never consumes its key. See
 [ADR-0003](docs/adr/0003-business-id-as-idempotency-key.md). Payment settlement follows a deterministic
@@ -268,12 +270,17 @@ entry construction, the payment waterfall, the explanation/suggested-action rule
 `toHttpResponse`). Integration tests cover the four DB-backed areas the brief requires: duplicate delivery,
 wrong-currency rollback (with a whole-database atomicity proof), balanced ledger writes, and history
 verification (including a test that tampering itself requires disabling the append-only trigger first).
-**No test boots Next** — a route handler is three statements, each covered elsewhere. Coverage is measured
-every run (`coverage.include: ['src/server/**']`) and never gated by a threshold — a stated position, not a
-silent gap. One CI job, cheapest-first (`install → format:check → lint → typecheck → test:coverage →
-build → audit`), against a real Postgres service container. `pnpm audit` blocks at `critical`, reports at
-`high` (four known `next`-pinned build-time advisories, non-blocking by necessity). Full test list and
-workflow YAML: [`docs/spec/test-plan-and-ci.md`](docs/spec/test-plan-and-ci.md).
+**No test boots Next** — a route handler is three statements, each covered elsewhere. 143 tests (unit +
+integration) pass locally against a real Postgres. Coverage is measured every run
+(`coverage.include: ['src/server/**']`) and never gated by a threshold — a stated position, not a silent
+gap; the number this build actually achieves is **84.6% statements / 82.4% branches / 87.2% functions /
+86.4% lines** (`pnpm test:coverage`). The two files sitting near 0% by design are `src/server/api/http.ts`
+and `writeHandler.ts` — the route-assembly layer the "no test boots Next" rule deliberately leaves
+untested, held to a handful of lines each so the gap stays reviewable. One CI job, cheapest-first
+(`install → format:check → lint → typecheck → test:coverage → build → audit`), against a real Postgres
+service container. `pnpm audit` blocks at `critical`, reports at `high` (four known `next`-pinned
+build-time advisories, non-blocking by necessity). Full test list and workflow YAML:
+[`docs/spec/test-plan-and-ci.md`](docs/spec/test-plan-and-ci.md).
 
 ## 9. On-call: monitor & recover
 

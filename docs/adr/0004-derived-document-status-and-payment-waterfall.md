@@ -37,7 +37,7 @@ with no open documents applies nothing and the payment's `status` is `unapplied`
 a rejection. Cash is still posted; `open_balance_cents` simply goes negative.
 
 `open_balance_cents` itself is **ledger-derived** — the policy's `premium_receivable` account balance —
-never a column on `billing_documents` or `policies`. Billing documents reconcile *to* the ledger; a stored
+never a column on `billing_documents` or `policies`. Billing documents reconcile _to_ the ledger; a stored
 balance column was rejected as denormalization that could drift from the entries that are supposed to back
 it.
 
@@ -51,7 +51,7 @@ it.
 - **A stored `open_balance_cents` column on `policies` or `billing_documents`.** Rejected on the same
   drift concern: a number that must be kept in sync by every write path is a number that will eventually
   be wrong on one of them. Deriving it from `SUM(ledger_entries.amount_cents)` for the `premium_receivable`
-  account means it is definitionally correct — it cannot disagree with the ledger, because it *is* the
+  account means it is definitionally correct — it cannot disagree with the ledger, because it _is_ the
   ledger.
 - **Payments that name their own target billing document** (remittance-advice-style, carrying a
   `billing_document_id`), and a configurable allocation policy (proportional, newest-first,

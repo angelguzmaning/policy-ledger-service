@@ -1,0 +1,9 @@
+{
+  "policy_id": "POL-1001",
+  "homeowner_id": "HOME-204",
+  "status": "active",
+  "term_start": "2026-01-01",
+  "term_end": "2027-01-01",
+  "annual_premium_cents": 120000,
+  "currency": "USD"
+}

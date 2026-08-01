@@ -25,11 +25,11 @@ Rejected two structural alternatives, both prototyped:
 
 - **Card dashboard + tabs** (variant B) — summary cards, a tab bar switching between Endorsements / Payments /
   Ledger, forms behind toggle buttons. More screens for the same information; the tab bar hides the ledger and
-  payments behind clicks the reviewer has to know to make, and the video is a *single continuous flow*, not a
+  payments behind clicks the reviewer has to know to make, and the video is a _single continuous flow_, not a
   browse session.
 - **Raw log / terminal** (variant C) — every request/response shown as literal JSON in a scrolling log. Genuinely
-  tested "is showing the JSON verbatim actually persuasive" (ticket item 3) and the answer is *partially*: raw
-  JSON is the right instinct for the response envelope (see §4), but as the *entire* UI it stops being an operator
+  tested "is showing the JSON verbatim actually persuasive" (ticket item 3) and the answer is _partially_: raw
+  JSON is the right instinct for the response envelope (see §4), but as the _entire_ UI it stops being an operator
   view and becomes a network tab with extra steps — it fails the brief's "make the backend workflow understandable
   to an operator" test.
 
@@ -58,7 +58,7 @@ Two additions versus the prototyped variant A, made while writing this doc rathe
 - **A Ledger panel**, under the timeline, rendering `GET /ledger`'s `account_balances` and the
   `unbalanced_transactions` probe verbatim (always empty, by construction — the on-call note's first query). The
   prototype folded ledger correctness into the summary's `open_balance_cents`; the brief separately asks for a
-  "ledger summary," and #6/#10 built a whole endpoint whose entire point is to *prove* balance rather than assert
+  "ledger summary," and #6/#10 built a whole endpoint whose entire point is to _prove_ balance rather than assert
   it. Not showing it wastes the strongest artifact this backend has.
 - **An explicit "Verify History" action**, calling `GET /history/verify` rather than only reading the `history`
   block embedded in `GET /policies/:id`. The embedded block is enough for the status pill at rest, but the demo
@@ -81,7 +81,7 @@ Two additions versus the prototyped variant A, made while writing this doc rathe
   `POST` responses are deliberately narrow (`#10`: "the effects of this request only") specifically so this
   refetch is load-bearing rather than redundant.
 - **Query defaults, per `#16`**: `retry: false` (a `retry: 3` default would make the deliberate `422
-  CurrencyMismatch` demo hang through three silent retries before rendering), `staleTime: 30_000`,
+CurrencyMismatch` demo hang through three silent retries before rendering), `staleTime: 30_000`,
   `refetchOnWindowFocus: false`.
 - **The idempotency key is minted at form mount**, `useState(() => crypto.randomUUID())`, per `#7` — verified in
   the prototype's `useDemoForms` hook and carried forward unchanged. Minting on submit instead would mean a
