@@ -24,6 +24,10 @@ alternatives — see `docs/adr/`.
 Domain vocabulary (endorsement, proration, billing document, ledger transaction, hash chain, idempotency
 key, …) is defined precisely in [`CONTEXT.md`](CONTEXT.md).
 
+**Reviewing against the brief?** Every place this implementation differs from a literal reading of the
+assessment — and why — is collected in
+[`docs/deviations-from-the-brief.md`](docs/deviations-from-the-brief.md). Start there; §12 summarises it.
+
 ## 2. How to run it
 
 ```bash
@@ -352,7 +356,21 @@ message or triaging the rejected-request queue, not in producing a number a fina
 5. **`pnpm audit` high-severity noise** — currently all `next`'s own pinned build-time deps, non-blocking
    by necessity; a longer-lived project would track and bump `next` on a cadence to keep that list zero.
 
-## 12. Known limitations
+## 12. Deviations from the brief
+
+Full list, with reasoning, in
+[`docs/deviations-from-the-brief.md`](docs/deviations-from-the-brief.md). Nothing there changes a required
+behaviour — proration, integer-cent money, idempotency, wrong-currency atomic rejection, balanced postings,
+and append-only hash-chained history all behave as specified, and `pnpm replay` reproduces the brief's
+Expected Output. The three a reviewer will notice first:
+
+| Deviation                                                         | One-line reason                                                         |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Document `type` is `premium_charge`, not `endorsement_adjustment` | the brief's name cannot express a credit while `amount_cents > 0` holds |
+| `history.event_count` is 3, not 2                                 | `policy_created` is chained, so the proration baseline is hash-covered  |
+| `ledger.balanced` on the summary, not on `/ledger`                | the summary asserts, the ledger proves                                  |
+
+## 13. Known limitations
 
 Every decision's known limitations are indexed, one line each, in
 [`docs/known-limitations.md`](docs/known-limitations.md), each row linking back to the ADR or spec doc
