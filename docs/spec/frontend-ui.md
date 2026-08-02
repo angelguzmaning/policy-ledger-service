@@ -121,7 +121,9 @@ CurrencyMismatch` demo hang through three silent retries before rendering), `sta
 - **The idempotency key is minted at form mount**, `useState(() => crypto.randomUUID())`, per `#7` — verified in
   the prototype's `useDemoForms` hook and carried forward unchanged. Minting on submit instead would mean a
   double-click mints two keys and the idempotency guarantee protects nothing; this is a correctness rule, not a
-  style choice.
+  style choice. The key rotates in `onSuccess` and only there: while a submit is in flight or has failed, the
+  operator's retry is the _same_ request and must carry the same key; once the write has landed, the next submit is
+  a genuinely new payment or endorsement and would otherwise be refused as a duplicate of the one before it.
 
 ## 4. Error rendering
 

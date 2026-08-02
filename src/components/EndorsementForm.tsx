@@ -7,9 +7,10 @@ import { Button, Card, Input, Label } from '@/components/ui'
 import { ErrorBanner } from '@/components/ErrorBanner'
 
 export function EndorsementForm({ policyId }: { policyId: string }) {
-  // Minted at mount, not on submit -- a double-click must reuse the same
-  // key, or idempotency protects nothing. See docs/spec/frontend-ui.md §3.
-  const [idempotencyKey] = useState(() => crypto.randomUUID())
+  // Minted at mount, not on submit -- a double-click must reuse the same key,
+  // or idempotency protects nothing. Rotated only once a submit has actually
+  // succeeded, so the next endorsement is a new endorsement. See docs/spec/frontend-ui.md §3.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
   const [effectiveDate, setEffectiveDate] = useState('2026-07-01')
   const [newPremiumCents, setNewPremiumCents] = useState('144000')
   const [reason, setReason] = useState('Water-shutoff discount removed')
@@ -24,6 +25,7 @@ export function EndorsementForm({ policyId }: { policyId: string }) {
         ...(reason ? { reason } : {}),
       }),
     onSuccess: () => {
+      setIdempotencyKey(crypto.randomUUID())
       void queryClient.invalidateQueries({ queryKey: ['policy', policyId] })
       void queryClient.invalidateQueries({ queryKey: ['ledger', policyId] })
     },
