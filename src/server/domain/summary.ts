@@ -84,7 +84,12 @@ function rejectedClause(facts: SummaryFacts): string | null {
   return `${facts.rejectedEvents.length} inbound request(s) were rejected: ${list}.`
 }
 
-export function buildExplanation(facts: SummaryFacts): string {
+/**
+ * The explanation's clauses in the fixed order of api-contract.md §9, omitted
+ * ones already dropped. The wire keeps `explanation` as one string; the UI
+ * renders these as separate paragraphs rather than re-splitting prose.
+ */
+export function buildExplanationClauses(facts: SummaryFacts): string[] {
   const clauses: (string | null)[] = [
     policyClause(facts),
     endorsementClause(facts),
@@ -92,7 +97,11 @@ export function buildExplanation(facts: SummaryFacts): string {
     historyClause(facts),
     rejectedClause(facts),
   ]
-  return clauses.filter((c): c is string => c !== null).join(' ')
+  return clauses.filter((c): c is string => c !== null)
+}
+
+export function buildExplanation(facts: SummaryFacts): string {
+  return buildExplanationClauses(facts).join(' ')
 }
 
 export function suggestedAction(facts: SummaryFacts): string {

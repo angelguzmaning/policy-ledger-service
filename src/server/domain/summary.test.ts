@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildExplanation, suggestedAction, type SummaryFacts } from '@/server/domain/summary'
+import {
+  buildExplanation,
+  buildExplanationClauses,
+  suggestedAction,
+  type SummaryFacts,
+} from '@/server/domain/summary'
 
 const base: SummaryFacts = {
   policyId: 'POL-1001',
@@ -131,6 +136,35 @@ describe('buildExplanation -- clause 5 (rejected)', () => {
 
   it('none: clause omitted', () => {
     expect(buildExplanation(base)).not.toContain('rejected')
+  })
+})
+
+describe('buildExplanationClauses -- the same text, unjoined for the UI', () => {
+  it('joins back to buildExplanation exactly, so the wire string and the paragraphs cannot drift', () => {
+    const facts: SummaryFacts = {
+      ...base,
+      rejectedEvents: [{ id: 'PAY-9002', reason: 'currency mismatch' }],
+    }
+    expect(buildExplanationClauses(facts).join(' ')).toBe(buildExplanation(facts))
+  })
+
+  it('returns the five clauses in the fixed order of §9 when all are present', () => {
+    const facts: SummaryFacts = {
+      ...base,
+      rejectedEvents: [{ id: 'PAY-9002', reason: 'currency mismatch' }],
+    }
+    const clauses = buildExplanationClauses(facts)
+    expect(clauses).toHaveLength(5)
+    expect(clauses[0]).toContain('Policy POL-1001 is active')
+    expect(clauses[1]).toContain('END-2001')
+    expect(clauses[2]).toContain('fully paid')
+    expect(clauses[3]).toContain('verifies intact')
+    expect(clauses[4]).toContain('PAY-9002')
+  })
+
+  it('omits the optional clauses rather than emitting empty paragraphs', () => {
+    const facts: SummaryFacts = { ...base, endorsementCount: 0, latestEndorsement: null }
+    expect(buildExplanationClauses(facts)).toHaveLength(3)
   })
 })
 

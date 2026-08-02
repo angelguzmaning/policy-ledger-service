@@ -73,6 +73,7 @@ export interface PolicyView {
   history: { valid: boolean; event_count: number; events: string[] }
   rejected_events: { id: string; reason: string }[]
   explanation: string
+  explanation_clauses: string[]
   suggested_action: string
 }
 

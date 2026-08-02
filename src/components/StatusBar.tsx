@@ -44,7 +44,13 @@ export function StatusBar({ policy }: { policy: PolicyView }) {
         </span>
       </div>
 
-      <p className="text-sm text-zinc-800 dark:text-zinc-200">{policy.explanation}</p>
+      <div className="flex flex-col gap-1.5">
+        {policy.explanation_clauses.map((clause) => (
+          <p key={clause} className="text-sm text-zinc-800 dark:text-zinc-200">
+            {clause}
+          </p>
+        ))}
+      </div>
       <p className="text-sm font-medium">{policy.suggested_action}</p>
     </Card>
   )

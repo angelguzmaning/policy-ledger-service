@@ -101,3 +101,7 @@ Source: [`docs/adr/0006-api-error-model-and-payment-identifiers.md`](adr/0006-ap
   ([ADR-0002](adr/0002-ledger-signed-amounts-and-db-enforced-balance.md))
 - **`inbound_requests` records every rejected delivery**, which is what makes `rejected_events` visible to
   the operator UI rather than discoverable only by grepping logs.
+- **`explanation_clauses` accompanies `explanation`** — the identical text, split at the clause boundaries the
+  contract already fixes, so the UI can render one paragraph per clause instead of re-splitting prose that
+  contains decimal points. `explanation` itself is unchanged.
+  ([api-contract §9](spec/api-contract.md))

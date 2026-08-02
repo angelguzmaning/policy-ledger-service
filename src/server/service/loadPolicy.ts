@@ -1,5 +1,5 @@
 import type { Db } from '@/server/db/withTransaction'
-import { buildExplanation, suggestedAction } from '@/server/domain/summary'
+import { buildExplanation, buildExplanationClauses, suggestedAction } from '@/server/domain/summary'
 import { PolicyNotFoundError } from '@/server/errors'
 import {
   deriveDocumentStatus,
@@ -76,6 +76,8 @@ export interface PolicyView {
   history: { valid: boolean; event_count: number; events: string[] }
   rejected_events: { id: string; reason: string }[]
   explanation: string
+  /** The same text as `explanation`, split at the clause boundaries of §9 so the UI can paragraph it. */
+  explanation_clauses: string[]
   suggested_action: string
 }
 
@@ -277,6 +279,7 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
     },
     rejected_events: rejectedEvents,
     explanation: buildExplanation(summaryFacts),
+    explanation_clauses: buildExplanationClauses(summaryFacts),
     suggested_action: suggestedAction(summaryFacts),
   }
 }

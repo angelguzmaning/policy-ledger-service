@@ -449,18 +449,26 @@ every difference is an addition. The reviewer can diff our response against thei
   },
   "rejected_events": [{ "id": "PAY-9002", "reason": "currency mismatch" }],
   "explanation": "Policy POL-1001 is active with an annual premium of $1,440.00 USD for the term 2026-01-01 to 2027-01-01. 1 endorsement has been applied, most recently END-2001 effective 2026-07-01, which raised the annual premium by $240.00 and billed $120.99 pro-rata. The account is fully paid; there is no outstanding balance. The policy history chain of 3 events verifies intact. 1 inbound request was rejected: PAY-9002 (currency mismatch).",
+  "explanation_clauses": [
+    "Policy POL-1001 is active with an annual premium of $1,440.00 USD for the term 2026-01-01 to 2027-01-01.",
+    "1 endorsement has been applied, most recently END-2001 effective 2026-07-01, which raised the annual premium by $240.00 and billed $120.99 pro-rata.",
+    "The account is fully paid; there is no outstanding balance.",
+    "The policy history chain of 3 events verifies intact.",
+    "1 inbound request was rejected: PAY-9002 (currency mismatch)."
+  ],
   "suggested_action": "No action required"
 }
 ```
 
 ### Additions, and the three deviations
 
-| Field                                          | Why                                                                   |
-| ---------------------------------------------- | --------------------------------------------------------------------- |
-| `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view |
-| `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call     |
-| `history.events`                               | makes the `event_count` deviation explain itself on sight             |
-| `explanation`                                  | Required Output Field; see §8                                         |
+| Field                                          | Why                                                                                      |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view                    |
+| `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call                        |
+| `history.events`                               | makes the `event_count` deviation explain itself on sight                                |
+| `explanation`                                  | Required Output Field; see §8                                                            |
+| `explanation_clauses`                          | the same clauses of §9 unjoined, so the UI paragraphs them instead of re-splitting prose |
 
 | Deviation                                          | Reason                                                                                                                                                           |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
