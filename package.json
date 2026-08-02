@@ -11,14 +11,16 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "with-env": "dotenvx run -f .env.local --ignore=MISSING_ENV_FILE --quiet --",
+    "test": "pnpm with-env vitest run",
+    "test:watch": "pnpm with-env vitest",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration",
-    "test:coverage": "vitest run --coverage",
-    "migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts",
-    "replay": "tsx scripts/replay.ts"
+    "test:integration": "pnpm with-env vitest run --project integration",
+    "test:coverage": "pnpm with-env vitest run --coverage",
+    "migrate": "pnpm with-env tsx scripts/migrate.ts",
+    "db:seed": "pnpm with-env tsx scripts/seed.ts",
+    "db:reset": "pnpm with-env tsx scripts/reset-db.ts",
+    "replay": "pnpm with-env tsx scripts/replay.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
@@ -29,6 +31,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@dotenvx/dotenvx": "^2.19.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^24.13.3",
     "@types/pg": "^8.20.1",

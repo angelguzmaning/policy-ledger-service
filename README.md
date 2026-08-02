@@ -27,6 +27,7 @@ key, …) is defined precisely in [`CONTEXT.md`](CONTEXT.md).
 ## 2. How to run it
 
 ```bash
+cp .env.example .env.local    # adjust POSTGRES_PORT/URLs here if 5432 is taken
 docker-compose up -d          # Postgres 16
 pnpm install --frozen-lockfile
 pnpm migrate                  # runs migrations/NNNN_*.sql via scripts/migrate.ts
@@ -44,6 +45,22 @@ pnpm replay                   # POSTs events.json through the real HTTP endpoint
 `pnpm replay` exits non-zero if the printed `ledger.balanced` is `false` or `history.valid` is `false` —
 the two properties that actually matter. It is not diffed byte-for-byte against the brief's example; see
 [Known limitations](docs/known-limitations.md).
+
+**`pnpm replay` is not idempotent** — it POSTs the same events again, so a second run against the same
+database shows two endorsements and two rejections. `pnpm db:reset` (DROP → migrate → seed) puts the
+database back to a clean pre-replay state; reset before replaying if you want output that matches the
+brief. It refuses to run under `NODE_ENV=production` and never touches the test database.
+
+### Environment variables
+
+`.env.local` (gitignored; copy from `.env.example`) is the single place local config lives. Next.js loads
+it natively for `pnpm dev`/`pnpm build`; everything else — the `scripts/` entry points and Vitest — is
+prefixed with `pnpm with-env`, which is [dotenvx](https://dotenvx.com) injecting the same file. Real
+environment variables always win over the file, and a missing `.env.local` is ignored, so CI (which
+exports `POSTGRES_ADMIN_URL` and has no `.env.local`) works unchanged.
+
+If `5432` is already in use locally, `docker-compose.yml` reads `${POSTGRES_PORT:-5432}` — set
+`POSTGRES_PORT` and point both URLs in `.env.local` at the same port.
 
 ## 3. API design
 
