@@ -60,8 +60,10 @@ export function Timeline({ policy }: { policy: PolicyView }) {
           <div className="rounded-md border border-red-200 bg-red-50 p-2 dark:border-red-900 dark:bg-red-950">
             <span className="font-medium">Rejected requests</span>
             <ul className="list-inside list-disc">
-              {policy.rejected_events.map((r) => (
-                <li key={r.id}>
+              {/* Rejections are append-only and returned in insertion order, and the same
+                  business id can be rejected repeatedly -- index is the only stable key. */}
+              {policy.rejected_events.map((r, i) => (
+                <li key={`${r.id}-${i}`}>
                   {r.id}: {r.reason}
                 </li>
               ))}
