@@ -142,6 +142,16 @@ separately would find only the net figure in this schema. _What you would do:_ a
 account and route negative deltas there instead of mirroring — a migration, not a redesign, since the
 posting builder already isolates "which accounts, which signs" in one function.
 
+**`ledger_transactions` has no ordering column.** Transactions are read `ORDER BY posted_at,
+ledger_transaction_id`, and that id is a random `gen_random_uuid()` — so two transactions committed within the
+same `now()` instant order arbitrarily, and can order _differently_ between two reads. Balances are unaffected
+(a sum does not care about order) and this was invisible while the API only exposed totals. _How you would
+notice:_ the UI's account statements section renders a **running balance**, so same-instant transactions could
+show different intermediate figures on two page loads while still closing on the same correct total — and a
+replay would reproduce the rows in a different order. _What you would do:_ give `ledger_transactions` a
+per-policy sequence column (the shape `policy_events.seq` already uses) and order by it, making the tiebreak
+total and the order itself part of the recorded fact rather than an artifact of a random id.
+
 **Oldest-open-first payment allocation is a stated default, not a configurable policy** (see ADR-0004 for
 the full reasoning) — noted here because it is this ADR's ledger that the waterfall writes into.
 

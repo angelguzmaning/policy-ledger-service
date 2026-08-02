@@ -5,6 +5,7 @@ import { DEMO_POLICY_ID, fetchLedger, fetchPolicy } from '@/lib/api'
 import { StatusBar } from '@/components/StatusBar'
 import { Timeline } from '@/components/Timeline'
 import { LedgerPanel } from '@/components/LedgerPanel'
+import { AccountStatements } from '@/components/AccountStatements'
 import { EndorsementForm } from '@/components/EndorsementForm'
 import { PaymentForm } from '@/components/PaymentForm'
 import { ErrorBanner } from '@/components/ErrorBanner'
@@ -43,6 +44,12 @@ export default function Home() {
               <PaymentForm policyId={policyId} />
             </div>
           </div>
+
+          {/* Full-width, below the split console rather than inside the ledger
+              panel: the drill-down is a second reading of the same numbers, not
+              part of the one-screen demo flow. */}
+          <hr className="mt-2 border-zinc-200 dark:border-zinc-800" />
+          <AccountStatements ledger={ledgerQuery.data} />
         </>
       )}
     </main>

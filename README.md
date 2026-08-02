@@ -281,6 +281,9 @@ A single-page "split console" operator UI for `POL-1001`: status bar (premium, t
 verified pill), a merged timeline of events/documents/payments, a ledger panel showing `account_balances`
 and the always-empty `unbalanced_transactions` probe, and two forms (apply endorsement, record payment)
 built on TanStack Query `useMutation` with invalidate-and-refetch as the demonstration of API consumption.
+Below the console, a full-width **account statements** section drills each of those balances down into the
+movements that produced it — debit/credit columns and a running balance closing on the figure above,
+regrouped client-side from the transactions `GET /ledger` already returns.
 Full scope, rejected layout alternatives, and the demo path:
 [`docs/spec/frontend-ui.md`](docs/spec/frontend-ui.md).
 

@@ -18,6 +18,7 @@ Source: [`docs/adr/0002-ledger-signed-amounts-and-db-enforced-balance.md`](adr/0
 
 - **Written premium is held net rather than as contra-revenue `return_premium`** — a gross written-vs-returns reporting requirement would find only the net figure.
 - **The deferred balance trigger is droppable by the table owner**, and migrations run as owner — same risk shape as the append-only trigger below.
+- **`ledger_transactions` has no ordering column** — same-instant transactions tiebreak on a random UUID, so balances stay correct but a running balance can render inconsistently between reads.
 
 ## Idempotency contract
 
