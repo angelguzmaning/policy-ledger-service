@@ -431,7 +431,8 @@ every difference is an addition. The reviewer can diff our response against thei
       "external_payment_id": "PAY-9001",
       "amount_cents": 12099,
       "status": "applied",
-      "idempotency_result": "duplicate ignored"
+      "idempotency_result": "duplicate ignored",
+      "received_at": "2026-07-03T18:30:00Z"
     }
   ],
   "open_balance_cents": 0,
@@ -466,6 +467,7 @@ every difference is an addition. The reviewer can diff our response against thei
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view                    |
 | `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call                        |
+| `payments[].received_at`                       | the date the timeline sorts payments by (see below); previously validated and echoed on write but never exposed on read |
 | `history.events`                               | makes the `event_count` deviation explain itself on sight                                |
 | `explanation`                                  | Required Output Field; see §8                                                            |
 | `explanation_clauses`                          | the same clauses of §9 unjoined, so the UI paragraphs them instead of re-splitting prose |
@@ -482,6 +484,11 @@ every difference is an addition. The reviewer can diff our response against thei
 `idempotency_result` on a `GET` comes from the `inbound_requests` log (`#8`) — it reports the last delivery outcome
 for that id, which is what makes the brief's example reproducible literally instead of requiring the interpretive
 bet that the example was really a replay report.
+
+`payments[]` is ordered by `received_at` (earliest first), tiebroken on `payment_id` — **display order**, not the
+oldest-open-first **allocation order** ADR-0004 uses to route cash against open documents. The two are deliberately
+different (ADR-0004 §"Allocation order vs. display order"): a back-dated payment settles whatever is open when it
+lands, it does not reach back and re-cut allocations already made.
 
 ### Failures
 

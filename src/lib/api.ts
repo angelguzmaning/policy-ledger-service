@@ -64,6 +64,7 @@ export interface PolicyView {
     amount_cents: number
     status: string
     idempotency_result: string
+    received_at: string
   }[]
   open_balance_cents: number
   ledger: {

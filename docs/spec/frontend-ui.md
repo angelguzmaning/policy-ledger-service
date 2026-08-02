@@ -58,6 +58,14 @@ Rejected two structural alternatives, both prototyped:
 └───────────────────────────────────────────────────┘
 ```
 
+**Payment ordering within the timeline**: payments are listed in **receipt order**, earliest `received_at` first,
+tiebroken on `payment_id` for a total, stable order (`GET /policies/:policyId`'s `payments[]` is pre-sorted this
+way — the component renders it as returned, no client-side sort). Each payment row shows its `received_at` date so
+the ordering is legible, not implicit. This is deliberately **not** the order payments were applied to billing
+documents — allocation stays arrival order (ADR-0004 "Allocation order vs. display order"), so a back-dated
+payment can appear earlier in the timeline than a payment recorded before it, without retroactively changing what
+it settled.
+
 Additions versus the prototyped variant A. The first and third were made while writing this doc rather than
 deferred to implementation; the account statements section was added after the build, on the observation that the
 Ledger panel asserts balances the reviewer cannot then take apart:

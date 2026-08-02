@@ -112,6 +112,7 @@ describe("GET /policies/:policyId view -- reproduces the brief's sample state", 
         amount_cents: 12_099,
         status: 'applied',
         idempotency_result: 'duplicate ignored',
+        received_at: '2026-07-03T18:30:00Z',
       },
     ])
     expect(view.rejected_events).toEqual([{ id: 'PAY-9002', reason: 'currency mismatch' }])
@@ -121,6 +122,57 @@ describe("GET /policies/:policyId view -- reproduces the brief's sample state", 
 
   it('PolicyNotFound on an unknown policy', async () => {
     await expect(loadPolicy(pool, 'POL-9999')).rejects.toThrow(PolicyNotFoundError)
+  })
+
+  it('orders payments by receipt date, earliest first, regardless of recording order', async () => {
+    await seedPolicy(pool)
+
+    // Recorded in reverse of their receipt order: PAY-B2 (later receipt) first,
+    // PAY-B3 (earlier receipt) second -- the view must still list PAY-B3 first.
+    await recordPayment(pool, 'POL-1001', {
+      idempotency_key: 'PAY-B2',
+      external_payment_id: 'PAY-B2',
+      amount_cents: 10_000,
+      currency: 'USD',
+      received_at: '2026-09-15T00:00:00Z',
+    })
+    await recordPayment(pool, 'POL-1001', {
+      idempotency_key: 'PAY-B3',
+      external_payment_id: 'PAY-B3',
+      amount_cents: 20_000,
+      currency: 'USD',
+      received_at: '2026-08-02T00:00:00Z',
+    })
+
+    const view = await loadPolicy(pool, 'POL-1001')
+    expect(view.payments.map((p) => p.external_payment_id)).toEqual(['PAY-B3', 'PAY-B2'])
+    expect(view.payments.map((p) => p.received_at)).toEqual([
+      '2026-08-02T00:00:00Z',
+      '2026-09-15T00:00:00Z',
+    ])
+  })
+
+  it('breaks a receipt-date tie deterministically by payment id', async () => {
+    await seedPolicy(pool)
+
+    // Recorded in reverse of id order, same instant -- the tiebreak must sort by id, not recording order.
+    await recordPayment(pool, 'POL-1001', {
+      idempotency_key: 'PAY-B2',
+      external_payment_id: 'PAY-B2',
+      amount_cents: 10_000,
+      currency: 'USD',
+      received_at: '2026-08-02T00:00:00Z',
+    })
+    await recordPayment(pool, 'POL-1001', {
+      idempotency_key: 'PAY-B1',
+      external_payment_id: 'PAY-B1',
+      amount_cents: 20_000,
+      currency: 'USD',
+      received_at: '2026-08-02T00:00:00Z',
+    })
+
+    const view = await loadPolicy(pool, 'POL-1001')
+    expect(view.payments.map((p) => p.external_payment_id)).toEqual(['PAY-B1', 'PAY-B2'])
   })
 
   it('zero endorsements/payments: empty lists, "No action required"', async () => {

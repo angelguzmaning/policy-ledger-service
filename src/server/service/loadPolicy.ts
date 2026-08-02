@@ -41,6 +41,7 @@ interface PaymentRow {
   external_payment_id: string
   amount_cents: string
   applied_cents: string | null
+  received_at: string
 }
 
 export interface PolicyEndorsementView {
@@ -56,6 +57,7 @@ export interface PolicyPaymentView {
   amount_cents: number
   status: PaymentStatus
   idempotency_result: IdempotencyResult
+  received_at: string
 }
 
 export interface PolicyView {
@@ -149,12 +151,12 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
   )
 
   const { rows: paymentRows } = await db.query<PaymentRow>(
-    `SELECT p.payment_id, p.external_payment_id, p.amount_cents,
+    `SELECT p.payment_id, p.external_payment_id, p.amount_cents, p.received_at,
             (SELECT COALESCE(SUM(pa.amount_cents), 0) FROM payment_applications pa
               WHERE pa.payment_id = p.payment_id) AS applied_cents
        FROM payments p
       WHERE p.policy_id = $1
-      ORDER BY p.policy_seq`,
+      ORDER BY p.received_at, p.payment_id`,
     [policyId],
   )
 
@@ -163,6 +165,7 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
     amount_cents: Number(row.amount_cents),
     status: derivePaymentStatus(Number(row.amount_cents), Number(row.applied_cents ?? 0)),
     idempotency_result: idempotencyResults.get(row.payment_id) ?? 'applied',
+    received_at: row.received_at,
   }))
 
   const openBalanceCents = await getOpenBalanceCents(db, policyId)

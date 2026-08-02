@@ -52,6 +52,7 @@ export function Timeline({ policy }: { policy: PolicyView }) {
             <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
               <span>{(p.amount_cents / 100).toFixed(2)}</span>
               <Badge tone={statusTone(p.status)}>{p.status}</Badge>
+              <span>received {p.received_at.slice(0, 10)}</span>
             </div>
           </div>
         ))}

@@ -41,6 +41,25 @@ never a column on `billing_documents` or `policies`. Billing documents reconcile
 balance column was rejected as denormalization that could drift from the entries that are supposed to back
 it.
 
+### Allocation order vs. display order
+
+Allocation order is **arrival order** — the order payments were recorded, which is also the order they were
+applied against whatever documents happened to be open at that instant (see above). It stays that way
+regardless of when the money actually arrived: a back-dated payment settles whatever is open when it lands,
+it does not reach back and re-cut allocations that already happened. Reversing a prior application isn't
+available under the append-only rule — it would need a schema change relaxing the positive-amount check, an
+exemption from the shared trigger, and a new reversal concept distinguishable from an application. Rejecting
+back-dated payments outright was also considered and refused: the payment already happened in another
+system, so declining a genuine receipt destroys a fact rather than protecting one.
+
+**Display order is receipt order** — `received_at` (earliest first), tiebroken on `payment_id` for a total,
+stable order. `GET /policies/:policyId`'s `payments[]` is sorted this way (`docs/spec/api-contract.md` §6),
+and the operator timeline (`docs/spec/frontend-ui.md` §2) renders it in that order with the date visible on
+each row, so an operator reading the timeline sees payments in the order the money arrived even though the
+system settled them in the order they were keyed in. This is the first place `received_at` is load-bearing;
+until this ADR it was validated on the way in, stored, and echoed on the write response, and used for
+nothing else.
+
 ## Rejected alternatives
 
 - **A stored `status` column on `billing_documents`, updated as payments arrive.** Rejected because it
