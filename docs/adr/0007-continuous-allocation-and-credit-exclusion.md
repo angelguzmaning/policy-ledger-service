@@ -134,11 +134,11 @@ own gross amount as still owed — the two disagree by exactly the unconsumed cr
 _How you would notice:_ reproducible by hand on the seeded policy (`POL-1001`, `120000`, term
 `2026-01-01`–`2027-01-01`):
 
-| Step                                       | Result                                                |
-| ------------------------------------------ | ----------------------------------------------------- |
-| Endorsement, effective `2026-06-01`, `114000` | `delta −3518` → BILL-3001 `premium_credit`, `issued`  |
-| Endorsement, effective `2026-07-01`, `144000` | `delta +15123` → BILL-3002 `premium_charge`, `open`   |
-| 4 payments × `3000`                        | all `applied`; no remainder, so no sweep fires        |
+| Step                                          | Result                                               |
+| --------------------------------------------- | ---------------------------------------------------- |
+| Endorsement, effective `2026-06-01`, `114000` | `delta −3518` → BILL-3001 `premium_credit`, `issued` |
+| Endorsement, effective `2026-07-01`, `144000` | `delta +15123` → BILL-3002 `premium_charge`, `open`  |
+| 4 payments × `3000`                           | all `applied`; no remainder, so no sweep fires       |
 
 The ledger reads `premium_receivable = 11605 − 12000 = −395` (the account is $3.95 **in credit**), while
 BILL-3002 reads `15123 − 12000 = 3123` still open and reports `partially_paid`. The gap is `3123 + 395 =
