@@ -134,7 +134,11 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
             id: row.billing_document_id,
             type: toApiBillingDocumentType(row.document_type),
             amount_cents: Number(row.bd_amount_cents),
-            status: deriveDocumentStatus(Number(row.bd_amount_cents), Number(row.paid_cents ?? 0)),
+            status: deriveDocumentStatus(
+              row.document_type,
+              Number(row.bd_amount_cents),
+              Number(row.paid_cents ?? 0),
+            ),
           }
         : null,
     idempotency_result: idempotencyResults.get(row.endorsement_id) ?? 'applied',
@@ -223,8 +227,14 @@ export async function loadPolicy(db: Db, policyId: string): Promise<PolicyView> 
   const annualPremiumCents = Number(policy.annual_premium_cents)
   const latestEndorsement =
     endorsements.length > 0 ? endorsements[endorsements.length - 1] : undefined
+  // Only premium_charge documents count toward "open" -- a premium_credit reports `issued` and
+  // never awaits collection, so it must not inflate the count the explanation urges collection on
+  // (ADR-0007).
   const openDocumentCount = endorsements.filter(
-    (e) => e.billing_document && e.billing_document.status !== 'paid',
+    (e) =>
+      e.billing_document &&
+      e.billing_document.type === 'premium_charge' &&
+      e.billing_document.status !== 'paid',
   ).length
 
   const historyFacts = chainResult.valid

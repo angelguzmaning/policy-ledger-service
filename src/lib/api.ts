@@ -41,7 +41,7 @@ export interface BillingDocumentView {
   id: string
   type: 'premium_charge' | 'premium_credit'
   amount_cents: number
-  status: 'open' | 'partially_paid' | 'paid'
+  status: 'open' | 'partially_paid' | 'paid' | 'issued'
 }
 
 export interface PolicyView {

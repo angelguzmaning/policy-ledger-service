@@ -78,3 +78,46 @@ export function allocate(
 
   return { applications, unappliedCents: remaining }
 }
+
+// --- Continuous remainder sweep onto a newly-raised charge (ADR-0007) ---
+
+export interface PaymentRemainder {
+  paymentId: string
+  remainderCents: number
+}
+
+export interface SweepApplicationDraft {
+  paymentId: string
+  amountCents: number
+}
+
+export interface SweepResult {
+  applications: SweepApplicationDraft[]
+  remainingOpenCents: number
+}
+
+/**
+ * Draws `openAmountCents` of a freshly-raised charge down from `remainders`, which callers must
+ * already have in **receipt order** (`received_at`, tiebroken on `payment_id`). Mirrors `allocate`
+ * with payment and document swapped: there `amountCents` is fixed and documents are walked in
+ * order; here `openAmountCents` is fixed and payments are walked in order.
+ */
+export function sweepRemainders(
+  openAmountCents: number,
+  remainders: readonly PaymentRemainder[],
+): SweepResult {
+  if (openAmountCents <= 0) throw new Error('sweepRemainders openAmountCents must be positive')
+
+  let remainingOpen = openAmountCents
+  const applications: SweepApplicationDraft[] = []
+
+  for (const remainder of remainders) {
+    if (remainingOpen <= 0) break
+    if (remainder.remainderCents <= 0) continue
+    const applied = Math.min(remainingOpen, remainder.remainderCents)
+    applications.push({ paymentId: remainder.paymentId, amountCents: applied })
+    remainingOpen -= applied
+  }
+
+  return { applications, remainingOpenCents: remainingOpen }
+}

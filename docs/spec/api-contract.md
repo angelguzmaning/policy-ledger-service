@@ -242,6 +242,11 @@ refetches the policy view, which is precisely the refetch-after-mutation flow `#
 reason to be in this build. Returning the full policy and seeding the cache would delete the thing the frontend
 exists to demonstrate.
 
+When the delta is positive, `billing_document.status` reflects the **post-sweep** state, not the state the
+document was written in: any payment remainders already on the policy settle against it, in the same
+transaction, before the response is built (ADR-0007). A charge fully covered by an existing remainder comes
+back `paid` in the very response that created it, not `open`.
+
 ```json
 {
   "endorsement_id": "END-2001",
@@ -461,22 +466,23 @@ every difference is an addition. The reviewer can diff our response against thei
 }
 ```
 
-### Additions, and the three deviations
+### Additions, and the four deviations
 
-| Field                                          | Why                                                                                      |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view                    |
-| `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call                        |
+| Field                                          | Why                                                                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view                                                   |
+| `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call                                                       |
 | `payments[].received_at`                       | the date the timeline sorts payments by (see below); previously validated and echoed on write but never exposed on read |
-| `history.events`                               | makes the `event_count` deviation explain itself on sight                                |
-| `explanation`                                  | Required Output Field; see §8                                                            |
-| `explanation_clauses`                          | the same clauses of §9 unjoined, so the UI paragraphs them instead of re-splitting prose |
+| `history.events`                               | makes the `event_count` deviation explain itself on sight                                                               |
+| `explanation`                                  | Required Output Field; see §8                                                                                           |
+| `explanation_clauses`                          | the same clauses of §9 unjoined, so the UI paragraphs them instead of re-splitting prose                                |
 
-| Deviation                                          | Reason                                                                                                                                                           |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type` is `premium_charge` / `premium_credit`      | `#5` — direction carried by type with `CHECK (amount_cents > 0)` intact; the brief's `endorsement_adjustment` cannot express a credit                            |
-| `event_count` is 3, not 2                          | `#8` — `policy_created` is in the chain so the premium baseline is hash-covered; the adjacent `events` list makes the difference self-evident                    |
-| `ledger.balanced` exists here but not on `/ledger` | Required Output Fields asks for "balanced status"; `#6` refused a bare boolean on the ledger endpoint. Split by role: **the summary asserts, the ledger proves** |
+| Deviation                                                 | Reason                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type` is `premium_charge` / `premium_credit`             | `#5` — direction carried by type with `CHECK (amount_cents > 0)` intact; the brief's `endorsement_adjustment` cannot express a credit                                                                                   |
+| `event_count` is 3, not 2                                 | `#8` — `policy_created` is in the chain so the premium baseline is hash-covered; the adjacent `events` list makes the difference self-evident                                                                           |
+| `ledger.balanced` exists here but not on `/ledger`        | Required Output Fields asks for "balanced status"; `#6` refused a bare boolean on the ledger endpoint. Split by role: **the summary asserts, the ledger proves**                                                        |
+| `billing_document.status` can be `issued`, a fourth value | `#19`/[ADR-0007](../adr/0007-continuous-allocation-and-credit-exclusion.md) — a `premium_credit` is never payable and reporting it `open` reads as "awaiting payment," backwards for money the insurer owes the insured |
 
 `ledger.balanced` is computed, never stored:
 `sum_all_entries === 0 && unbalanced_transactions.length === 0`.

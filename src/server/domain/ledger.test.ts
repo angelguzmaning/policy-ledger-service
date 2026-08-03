@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allocate, postEndorsement, postPayment } from '@/server/domain/ledger'
+import { allocate, postEndorsement, postPayment, sweepRemainders } from '@/server/domain/ledger'
 
 function sum(entries: { amountCents: number }[]): number {
   return entries.reduce((acc, e) => acc + e.amountCents, 0)
@@ -175,5 +175,51 @@ describe('allocate', () => {
     expect(applied).toBeLessThanOrEqual(1_000_000)
     expect(applied).toBe(200)
     expect(result.unappliedCents).toBe(1_000_000 - 200)
+  })
+})
+
+describe('sweepRemainders', () => {
+  it('case 1 -- one remainder exactly settles the new charge', () => {
+    const result = sweepRemainders(5_000, [{ paymentId: 'PAY-1', remainderCents: 5_000 }])
+    expect(result.applications).toEqual([{ paymentId: 'PAY-1', amountCents: 5_000 }])
+    expect(result.remainingOpenCents).toBe(0)
+  })
+
+  it('case 2 -- remainder smaller than the charge: applies in full, charge stays open', () => {
+    const result = sweepRemainders(5_000, [{ paymentId: 'PAY-1', remainderCents: 2_000 }])
+    expect(result.applications).toEqual([{ paymentId: 'PAY-1', amountCents: 2_000 }])
+    expect(result.remainingOpenCents).toBe(3_000)
+  })
+
+  it("case 3 -- two remainders draw down in the order given (receipt order is the caller's job)", () => {
+    const result = sweepRemainders(3_000, [
+      { paymentId: 'PAY-EARLY', remainderCents: 2_000 },
+      { paymentId: 'PAY-LATE', remainderCents: 5_000 },
+    ])
+    expect(result.applications).toEqual([
+      { paymentId: 'PAY-EARLY', amountCents: 2_000 },
+      { paymentId: 'PAY-LATE', amountCents: 1_000 },
+    ])
+    expect(result.remainingOpenCents).toBe(0)
+  })
+
+  it('case 4 -- no remainders: nothing applied, charge stays fully open', () => {
+    const result = sweepRemainders(5_000, [])
+    expect(result.applications).toEqual([])
+    expect(result.remainingOpenCents).toBe(5_000)
+  })
+
+  it('case 5 -- zero-remainder entries are skipped', () => {
+    const result = sweepRemainders(1_000, [
+      { paymentId: 'PAY-EMPTY', remainderCents: 0 },
+      { paymentId: 'PAY-1', remainderCents: 1_000 },
+    ])
+    expect(result.applications).toEqual([{ paymentId: 'PAY-1', amountCents: 1_000 }])
+    expect(result.remainingOpenCents).toBe(0)
+  })
+
+  it('case 6 -- rejects a non-positive open amount', () => {
+    expect(() => sweepRemainders(0, [])).toThrow()
+    expect(() => sweepRemainders(-1, [])).toThrow()
   })
 })

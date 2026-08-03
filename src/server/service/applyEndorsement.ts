@@ -2,7 +2,7 @@ import type { EndorsementCommand } from '@/server/api/schemas'
 import type { Db, Tx } from '@/server/db/withTransaction'
 import { withTransaction } from '@/server/db/withTransaction'
 import { parseDate } from '@/server/domain/dates'
-import { postEndorsement } from '@/server/domain/ledger'
+import { postEndorsement, sweepRemainders } from '@/server/domain/ledger'
 import { prorate } from '@/server/domain/prorate'
 import {
   IdempotencyKeyConflictError,
@@ -16,6 +16,8 @@ import {
   computeFingerprint,
   deriveDocumentStatus,
   getOpenBalanceCents,
+  insertPaymentApplications,
+  loadUnappliedPaymentRemainders,
   selectPolicyForUpdate,
   systemClock,
   toApiBillingDocumentType,
@@ -79,6 +81,7 @@ async function loadEndorsementResult(
         type: toApiBillingDocumentType(billingRow.document_type),
         amount_cents: Number(billingRow.amount_cents),
         status: deriveDocumentStatus(
+          billingRow.document_type,
           Number(billingRow.amount_cents),
           Number(billingRow.paid_cents ?? 0),
         ),
@@ -203,10 +206,11 @@ export async function applyEndorsement(
       const documentType = deltaCents > 0 ? 'endorsement_adjustment' : 'premium_credit'
       const amountCents = Math.abs(deltaCents)
 
-      await tx.query(
+      const { rows: billingDocRows } = await tx.query<{ billing_document_id: string }>(
         `INSERT INTO billing_documents
            (policy_id, endorsement_id, document_type, amount_cents, currency, due_date)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING billing_document_id`,
         [
           policyId,
           command.idempotency_key,
@@ -216,6 +220,29 @@ export async function applyEndorsement(
           command.effective_date,
         ],
       )
+      const billingDocumentId = billingDocRows[0]?.billing_document_id
+      if (!billingDocumentId) throw new Error('billing_documents insert returned no id')
+
+      // Only charges are payable (ADR-0007) -- a premium credit stays out of the sweep entirely,
+      // and cash never settles it.
+      if (documentType === 'endorsement_adjustment') {
+        const remainders = await loadUnappliedPaymentRemainders(tx, policyId)
+        const { applications } = sweepRemainders(
+          amountCents,
+          remainders.map((r) => ({
+            paymentId: r.payment_id,
+            remainderCents: Number(r.remainder_cents),
+          })),
+        )
+        await insertPaymentApplications(
+          tx,
+          applications.map((a) => ({
+            paymentId: a.paymentId,
+            billingDocumentId,
+            amountCents: a.amountCents,
+          })),
+        )
+      }
 
       const { rows: txRows } = await tx.query<{ ledger_transaction_id: string }>(
         `INSERT INTO ledger_transactions (policy_id, source_type, source_id, description)

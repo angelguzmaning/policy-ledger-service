@@ -4,7 +4,9 @@
 
 Accepted. Source: [#6](https://github.com/angelguzmaning/policy-ledger-service/issues/6) (ledger model)
 and [#7](https://github.com/angelguzmaning/policy-ledger-service/issues/7) (idempotency contract, for the
-append-only consequence).
+append-only consequence). Extended by [ADR-0007](0007-continuous-allocation-and-credit-exclusion.md), which
+adds the remainder sweep and excludes premium credits from the waterfall — the allocation-order and
+display-order rules below are otherwise unchanged.
 
 ## Context
 
@@ -88,6 +90,12 @@ _How you would notice:_ a payment that "should" have settled a specific document
 remittance advice not modeled here) instead pays down whatever is oldest. _What you would do:_ extend the
 payment request shape to optionally carry a target `billing_document_id`, and fall back to the waterfall
 only when it's absent — `payment_applications`' shape does not need to change.
+
+**Superseded:** this section originally also listed "a payment's remainder that finds nothing open is stuck
+`unapplied` forever, even once a later charge could absorb it" as a known limitation of this ADR. That is
+resolved by [ADR-0007](0007-continuous-allocation-and-credit-exclusion.md)'s remainder sweep — a remainder
+is drawn down the moment a later endorsement raises a new charge, not stranded. ADR-0007's own Known
+limitations section carries what is still true after that fix.
 
 **Document status and open balance are computed on every read, not cached.** At take-home scale (a handful
 of documents per policy) this is free. _How you would notice:_ p99 latency on `GET /policies/:id` climbing

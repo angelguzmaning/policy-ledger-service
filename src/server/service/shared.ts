@@ -113,12 +113,20 @@ export function toApiBillingDocumentType(documentType: DbDocumentType): ApiDocum
   return documentType === 'endorsement_adjustment' ? 'premium_charge' : 'premium_credit'
 }
 
-export type BillingDocumentStatus = 'open' | 'partially_paid' | 'paid'
+export type BillingDocumentStatus = 'open' | 'partially_paid' | 'paid' | 'issued'
 
+/**
+ * A `premium_credit` never enters the payment waterfall (ADR-0007) -- cash never settles it, so
+ * `open`/`partially_paid`/`paid` would misreport it as awaiting collection. It reports the
+ * distinct `issued` status instead: a fourth value on a status the API contract otherwise fixes
+ * at three (docs/spec/api-contract.md §6, docs/deviations-from-the-brief.md).
+ */
 export function deriveDocumentStatus(
+  documentType: DbDocumentType,
   amountCents: number,
   paidCents: number,
 ): BillingDocumentStatus {
+  if (documentType === 'premium_credit') return 'issued'
   if (paidCents <= 0) return 'open'
   if (paidCents >= amountCents) return 'paid'
   return 'partially_paid'
@@ -142,6 +150,84 @@ export async function getOpenBalanceCents(db: Db | Tx, policyId: string): Promis
     [policyId],
   )
   return Number(rows[0]?.balance ?? 0)
+}
+
+export interface OpenChargeDocumentRow {
+  billing_document_id: string
+  due_date: string
+  issued_at: string
+  open_amount_cents: string
+}
+
+/**
+ * This policy's open **charge** documents -- `document_type = 'endorsement_adjustment'` only.
+ * Premium credit notes are excluded: only charges are payable (ADR-0007). Shared between the
+ * initial payment waterfall and the post-endorsement remainder sweep so both draw from the same
+ * definition of "open".
+ */
+export async function loadOpenChargeDocuments(
+  tx: Tx,
+  policyId: string,
+): Promise<OpenChargeDocumentRow[]> {
+  const { rows } = await tx.query<OpenChargeDocumentRow>(
+    `SELECT bd.billing_document_id, bd.due_date::text AS due_date, bd.issued_at::text AS issued_at,
+            bd.amount_cents - COALESCE(SUM(pa.amount_cents), 0) AS open_amount_cents
+       FROM billing_documents bd
+       LEFT JOIN payment_applications pa ON pa.billing_document_id = bd.billing_document_id
+      WHERE bd.policy_id = $1 AND bd.document_type = 'endorsement_adjustment'
+      GROUP BY bd.billing_document_id, bd.due_date, bd.issued_at
+     HAVING bd.amount_cents - COALESCE(SUM(pa.amount_cents), 0) > 0`,
+    [policyId],
+  )
+  return rows
+}
+
+export interface UnappliedPaymentRemainderRow {
+  payment_id: string
+  received_at: string
+  remainder_cents: string
+}
+
+/**
+ * Payments on this policy still holding an unapplied remainder, in **receipt order**
+ * (`received_at`, tiebroken on `payment_id`) -- the order remainders sweep in (ADR-0007), distinct
+ * from the display order used elsewhere.
+ */
+export async function loadUnappliedPaymentRemainders(
+  tx: Tx,
+  policyId: string,
+): Promise<UnappliedPaymentRemainderRow[]> {
+  const { rows } = await tx.query<UnappliedPaymentRemainderRow>(
+    `SELECT p.payment_id, p.received_at,
+            p.amount_cents - COALESCE(SUM(pa.amount_cents), 0) AS remainder_cents
+       FROM payments p
+       LEFT JOIN payment_applications pa ON pa.payment_id = p.payment_id
+      WHERE p.policy_id = $1
+      GROUP BY p.payment_id, p.received_at, p.amount_cents
+     HAVING p.amount_cents - COALESCE(SUM(pa.amount_cents), 0) > 0
+      ORDER BY p.received_at, p.payment_id`,
+    [policyId],
+  )
+  return rows
+}
+
+export interface PaymentApplicationInsert {
+  paymentId: string
+  billingDocumentId: string
+  amountCents: number
+}
+
+/** Writes one `payment_applications` row per draft -- shared by the initial waterfall and the sweep. */
+export async function insertPaymentApplications(
+  tx: Tx,
+  applications: readonly PaymentApplicationInsert[],
+): Promise<void> {
+  for (const application of applications) {
+    await tx.query(
+      'INSERT INTO payment_applications (payment_id, billing_document_id, amount_cents) VALUES ($1, $2, $3)',
+      [application.paymentId, application.billingDocumentId, application.amountCents],
+    )
+  }
 }
 
 const REJECTION_REASONS: Record<string, string> = {

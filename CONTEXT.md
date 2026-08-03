@@ -45,9 +45,11 @@ nothing else: no document, no ledger transaction.
 A charge or credit raised against a policy, identified by a server-minted natural key
 (`BILL-` + a sequence starting at 3001, reproducing the brief's `BILL-3001` from a fresh seed).
 `document_type` is `endorsement_adjustment` or `premium_credit`; `amount_cents` is always positive — sign
-is carried by `document_type`, not by the number. **There is no stored `status` column.** A document's
-status (`open` / `partially_paid` / `paid`) is derived from its `payment_applications` at read time, which
-is what lets a billing document be genuinely append-only: nothing ever `UPDATE`s one.
+is carried by `document_type`, not by the number. **There is no stored `status` column.** An
+`endorsement_adjustment` (API-facing `premium_charge`) document's status (`open` / `partially_paid` /
+`paid`) is derived from its `payment_applications` at read time, which is what lets a billing document be
+genuinely append-only: nothing ever `UPDATE`s one. A `premium_credit` reports the distinct status `issued`
+instead — see **Premium credit**.
 
 ## Premium credit
 
@@ -57,7 +59,10 @@ mid-term). Modeled as its own `document_type` rather than a negative amount so t
 with the debit/credit sides swapped — one code path handles both signs. Written premium is therefore held
 **net** rather than routed through a separate contra-revenue account (see ADR-0002's rejected alternative).
 Balances may go negative; **no refund is issued** by this system (payment-provider integration is out of
-scope).
+scope). A premium credit **never enters the payment waterfall or the remainder sweep** (ADR-0007) — cash
+never settles it, only charges are payable — and it reports status `issued`, not `open`, so it is never
+mistaken for a document awaiting collection. It is also excluded from the open-document count the
+explanation and suggested action are built from.
 
 ## Ledger transaction / ledger entry
 
@@ -77,6 +82,14 @@ a deterministic **oldest-open-first waterfall** (`ORDER BY due_date, issued_at, 
 see ADR-0004. A payment can partially settle one document and spill into the next; any amount left over
 after every open document is settled is `unapplied_cents` and is not an error (it simply leaves
 `open_balance_cents` negative).
+
+Allocation state is **live**, not a one-time snapshot taken at the payment's own write: when a later
+endorsement raises a new charge, that charge's own transaction sweeps any payments still holding a
+remainder onto it, oldest-received-first (`received_at`, tiebroken on `payment_id`) — see ADR-0007. A sweep
+appends new `payment_applications` rows exactly like the original waterfall; it never revisits or mutates
+one already written, and it posts no ledger transaction (the cash movement was already posted in full when
+the payment was recorded). Only `endorsement_adjustment` documents are ever a sweep's target — a
+`premium_credit` is never payable and is excluded from both the waterfall and the sweep.
 
 ## Policy event
 

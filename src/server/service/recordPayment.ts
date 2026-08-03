@@ -14,6 +14,8 @@ import {
   deriveDocumentStatus,
   derivePaymentStatus,
   getOpenBalanceCents,
+  insertPaymentApplications,
+  loadOpenChargeDocuments,
   selectPolicyForUpdate,
   systemClock,
   type Clock,
@@ -56,10 +58,12 @@ async function loadPaymentResult(
   const { rows: applicationRows } = await tx.query<{
     billing_document_id: string
     amount_cents: string
+    document_type: 'endorsement_adjustment' | 'premium_credit'
     document_amount_cents: string
     paid_cents: string
   }>(
-    `SELECT pa.billing_document_id, pa.amount_cents, bd.amount_cents AS document_amount_cents,
+    `SELECT pa.billing_document_id, pa.amount_cents, bd.document_type,
+            bd.amount_cents AS document_amount_cents,
             (SELECT COALESCE(SUM(pa2.amount_cents), 0) FROM payment_applications pa2
               WHERE pa2.billing_document_id = pa.billing_document_id) AS paid_cents
        FROM payment_applications pa
@@ -73,6 +77,7 @@ async function loadPaymentResult(
     billing_document_id: row.billing_document_id,
     amount_cents: Number(row.amount_cents),
     document_status_after: deriveDocumentStatus(
+      row.document_type,
       Number(row.document_amount_cents),
       Number(row.paid_cents),
     ),
@@ -177,21 +182,7 @@ export async function recordPayment(
       ],
     )
 
-    const { rows: openDocRows } = await tx.query<{
-      billing_document_id: string
-      due_date: string
-      issued_at: string
-      open_amount_cents: string
-    }>(
-      `SELECT bd.billing_document_id, bd.due_date::text AS due_date, bd.issued_at::text AS issued_at,
-              bd.amount_cents - COALESCE(SUM(pa.amount_cents), 0) AS open_amount_cents
-         FROM billing_documents bd
-         LEFT JOIN payment_applications pa ON pa.billing_document_id = bd.billing_document_id
-        WHERE bd.policy_id = $1
-        GROUP BY bd.billing_document_id, bd.due_date, bd.issued_at
-       HAVING bd.amount_cents - COALESCE(SUM(pa.amount_cents), 0) > 0`,
-      [policyId],
-    )
+    const openDocRows = await loadOpenChargeDocuments(tx, policyId)
     const openDocuments: OpenBillingDocument[] = openDocRows.map((row) => ({
       billingDocumentId: row.billing_document_id,
       dueDate: row.due_date,
@@ -200,12 +191,14 @@ export async function recordPayment(
     }))
 
     const { applications } = allocate(openDocuments, command.amount_cents)
-    for (const application of applications) {
-      await tx.query(
-        'INSERT INTO payment_applications (payment_id, billing_document_id, amount_cents) VALUES ($1, $2, $3)',
-        [command.idempotency_key, application.billingDocumentId, application.amountCents],
-      )
-    }
+    await insertPaymentApplications(
+      tx,
+      applications.map((a) => ({
+        paymentId: command.idempotency_key,
+        billingDocumentId: a.billingDocumentId,
+        amountCents: a.amountCents,
+      })),
+    )
 
     const { rows: txRows } = await tx.query<{ ledger_transaction_id: string }>(
       `INSERT INTO ledger_transactions (policy_id, source_type, source_id, description)

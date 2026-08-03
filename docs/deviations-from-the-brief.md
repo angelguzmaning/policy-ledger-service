@@ -15,7 +15,7 @@ names and one count, not as different numbers.
 
 ## Response shape
 
-Source: [`docs/spec/api-contract.md`](spec/api-contract.md#additions-and-the-three-deviations)
+Source: [`docs/spec/api-contract.md`](spec/api-contract.md#additions-and-the-four-deviations)
 
 - **Billing document `type` is `premium_charge` / `premium_credit`, not the brief's `endorsement_adjustment`.**
   The brief's name cannot express a negative endorsement while `CHECK (amount_cents > 0)` holds — direction
@@ -27,6 +27,10 @@ Source: [`docs/spec/api-contract.md`](spec/api-contract.md#additions-and-the-thr
   Output Fields ask for "balanced status"; a bare boolean was refused on the ledger endpoint itself. Split
   by role: the summary asserts, the ledger proves (it returns `sum_all_entries` and
   `unbalanced_transactions` as the evidence).
+- **`billing_document.status` can be `issued`, a fourth value on a status the contract otherwise fixes at
+  three.** A `premium_credit` is never payable, so reporting it `open` reads as "awaiting payment" — exactly
+  backwards for money the insurer owes the insured. See
+  [`docs/adr/0007-continuous-allocation-and-credit-exclusion.md`](adr/0007-continuous-allocation-and-credit-exclusion.md).
 
 The policy view is otherwise a strict **superset** of the brief's example — every key name and nesting level
 is preserved. Added fields (`homeowner_id`, `currency`, `term_start`/`term_end`, `effective_date`,
@@ -80,6 +84,11 @@ Source: [`docs/adr/0006-api-error-model-and-payment-identifiers.md`](adr/0006-ap
 - **Payments apply oldest-open-first** (`ORDER BY due_date, issued_at, billing_document_id`). The brief's
   payment events carry no billing-document reference, so some allocation rule is required; this one is a
   stated default responding to the data shape given, and is total so replay is reproducible.
+- **A payment's unapplied remainder is not final at the moment it is recorded.** When a later endorsement
+  raises a new charge, that charge's own transaction sweeps outstanding remainders onto it,
+  oldest-received-first, so the document view stops disagreeing with the ledger once cash sufficient to
+  cover the charge already exists. Only charges are swept — a `premium_credit` is excluded from allocation
+  entirely. See [ADR-0007](adr/0007-continuous-allocation-and-credit-exclusion.md).
 - **The idempotency key _is_ the business id** — no token table, no `Idempotency-Key` header. It arrives in
   the request body and is enforced by a plain `UNIQUE` constraint on the domain row. It matches the brief's
   data exactly (`END-2001`, `PAY-9001` are both), but note the visible consequence: a **UI-submitted
