@@ -64,6 +64,15 @@ never settles it, only charges are payable — and it reports status `issued`, n
 mistaken for a document awaiting collection. It is also excluded from the open-document count the
 explanation and suggested action are built from.
 
+A credit is likewise **never consumed by a charge**, in either direction: a new charge does not draw against
+an outstanding credit, and a new credit does not draw against an already-open charge. Its whole effect is
+the ledger posting. The consequence is a split view — `open_balance_cents` is correct while the charge
+document still reports its gross amount as owed, the two differing by exactly the unconsumed credit, and the
+summary can say "the account holds a credit" directly above a timeline row saying money is outstanding.
+**When a credit note exists on a policy, `open_balance_cents` is the collectible figure and
+`billing_document.status` is not.** Worked reproduction and the shape of the fix:
+[ADR-0007, "Known limitations"](docs/adr/0007-continuous-allocation-and-credit-exclusion.md#known-limitations).
+
 ## Ledger transaction / ledger entry
 
 The double-entry record of money movement. A `ledger_transactions` row is a **header** — `policy_id`,

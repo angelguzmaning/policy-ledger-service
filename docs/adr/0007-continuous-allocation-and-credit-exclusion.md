@@ -106,7 +106,11 @@ event hashes, and `pnpm replay`'s reproduction of the brief's Expected Output ar
   leaving both sides open.** The brief's scope has no refund or credit-netting concept, and `open_balance_cents`
   already nets the credit's ledger effect into the single balance figure every reader (explanation, suggested
   action, ledger view) already consults — a second netting mechanism at the document level would be a
-  parallel, and possibly divergent, representation of the same fact.
+  parallel, and possibly divergent, representation of the same fact. **This call has a real cost, paid at the
+  document level rather than the ledger level — see "A credit note is never consumed" below.** It was accepted
+  on the reading that one correct balance beats two representations that can disagree; that reasoning is sound
+  only for as long as no reader works off the document view alone, which is a weaker guarantee than it looked
+  when this ADR was written.
 
 ## Known limitations
 
@@ -120,6 +124,37 @@ charge's own creation time (this ADR). _How you would notice:_ a manual correcti
 possible today (documents are append-only), so this limitation has no current trigger; if a future change
 introduced document amendment, it would need to re-run the sweep as part of that write, the same way this
 ADR runs it as part of endorsement write.
+
+**A credit note is never consumed, so the document view can overstate what is collectible.** A
+`premium_credit` is excluded from allocation in both directions: a new charge does not draw against an
+outstanding credit, and a new credit does not draw against an already-open charge. The credit's only effect
+is its ledger posting. `open_balance_cents` is therefore always right, while the charge document reports its
+own gross amount as still owed — the two disagree by exactly the unconsumed credit.
+
+_How you would notice:_ reproducible by hand on the seeded policy (`POL-1001`, `120000`, term
+`2026-01-01`–`2027-01-01`):
+
+| Step                                       | Result                                                |
+| ------------------------------------------ | ----------------------------------------------------- |
+| Endorsement, effective `2026-06-01`, `114000` | `delta −3518` → BILL-3001 `premium_credit`, `issued`  |
+| Endorsement, effective `2026-07-01`, `144000` | `delta +15123` → BILL-3002 `premium_charge`, `open`   |
+| 4 payments × `3000`                        | all `applied`; no remainder, so no sweep fires        |
+
+The ledger reads `premium_receivable = 11605 − 12000 = −395` (the account is $3.95 **in credit**), while
+BILL-3002 reads `15123 − 12000 = 3123` still open and reports `partially_paid`. The gap is `3123 + 395 =
+3518` — exactly BILL-3001. The policy summary compounds the split: clause 3 reads off the balance and
+correctly says the account holds a credit, directly above a timeline row saying $31.23 is outstanding.
+
+_What you would do:_ trust `open_balance_cents`, not `billing_document.status`, whenever a `premium_credit`
+exists on the policy — an operator working the document alone would collect a further $31.23 on an account
+already in credit. The fix is to let credits allocate like payment remainders do: `sweepRemainders`
+(`domain/ledger.ts`) is already generic enough to serve both, since an unconsumed credit is the same
+`amount − Σ applications` subtraction as an unapplied payment remainder. What it needs is storage for an
+application row with no `payment_id` (`payment_applications.payment_id` is `NOT NULL REFERENCES payments`)
+and a **second** hook in `applyEndorsement` — endorsement direction is unconstrained, so credit-then-charge
+and charge-then-credit both occur, and a hook only at charge creation would miss the latter. Deferred, not
+rejected: it is a schema change plus three status decisions (what a credit-settled charge reports, what a
+consumed credit reports, and whether credit or cash draws first), which is more than this ticket's scope.
 
 **Two remainders sweeping onto the same new charge are still visible to a concurrent reader only after
 commit**, same as every other write in this system — no new isolation concern, just re-stated for this ADR's

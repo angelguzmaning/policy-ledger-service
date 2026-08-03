@@ -89,6 +89,12 @@ Source: [`docs/adr/0006-api-error-model-and-payment-identifiers.md`](adr/0006-ap
   oldest-received-first, so the document view stops disagreeing with the ledger once cash sufficient to
   cover the charge already exists. Only charges are swept — a `premium_credit` is excluded from allocation
   entirely. See [ADR-0007](adr/0007-continuous-allocation-and-credit-exclusion.md).
+- **A `premium_credit` is never consumed by a charge, so a policy holding one has a document view that
+  overstates what is collectible.** The credit's effect is its ledger posting alone: `open_balance_cents` is
+  correct, but the charge document keeps reporting its own gross amount as owed, the two differing by exactly
+  the unconsumed credit. Read the balance, not `billing_document.status`, whenever a credit note exists. A
+  worked reproduction and the shape of the fix are in
+  [ADR-0007, "Known limitations"](adr/0007-continuous-allocation-and-credit-exclusion.md#known-limitations).
 - **The idempotency key _is_ the business id** — no token table, no `Idempotency-Key` header. It arrives in
   the request body and is enforced by a plain `UNIQUE` constraint on the domain row. It matches the brief's
   data exactly (`END-2001`, `PAY-9001` are both), but note the visible consequence: a **UI-submitted
