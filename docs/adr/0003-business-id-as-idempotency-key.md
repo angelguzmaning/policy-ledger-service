@@ -89,13 +89,13 @@ surfaced to the caller — a concurrent insert re-reads under the lock and resol
 
 **The key is minted at intent formation, not at submit.** In the UI, `useState(() => crypto.randomUUID())`
 runs at form mount, not inside the submit handler. Minting on click instead of on mount means a double-click
-mints two distinct keys and idempotency has protected nothing — this is a correctness rule about *when* the
-key is generated, not merely *that* one exists.
+mints two distinct keys and idempotency has protected nothing — this is a correctness rule about _when_ the
+key is generated, not merely _that_ one exists.
 
 ## Rejected alternatives
 
 - **A `idempotency_keys` token table**, with a server-issued token the client must fetch before the real
-  request. Rejected because the client must still hold *some* identifier across a retry regardless of who
+  request. Rejected because the client must still hold _some_ identifier across a retry regardless of who
   minted it — server pre-issuance buys an extra endpoint and an extra round trip and solves nothing that
   caller-supplied ids don't already solve. It also doesn't match the brief's data: `events.json`'s records
   already carry natural business ids.

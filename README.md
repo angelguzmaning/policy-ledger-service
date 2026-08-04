@@ -1,5 +1,7 @@
 # Policy Ledger Service
 
+[![CI](https://github.com/angelguzmaning/policy-ledger-service/actions/workflows/ci.yml/badge.svg)](https://github.com/angelguzmaning/policy-ledger-service/actions/workflows/ci.yml)
+
 A focused slice of a homeowners-insurance Policy Administration System: mid-term endorsement → prorated
 premium delta → billing document → received-payment ingestion → balanced double-entry ledger →
 hash-chained, append-only policy history, plus a minimal operator UI. Built for Base Labs's Fullstack
@@ -22,9 +24,14 @@ alternatives — see `docs/adr/`.
 Domain vocabulary (endorsement, proration, billing document, ledger transaction, hash chain, idempotency
 key, …) is defined precisely in [`CONTEXT.md`](CONTEXT.md).
 
+**Reviewing against the brief?** Every place this implementation differs from a literal reading of the
+assessment — and why — is collected in
+[`docs/deviations-from-the-brief.md`](docs/deviations-from-the-brief.md). Start there; §12 summarises it.
+
 ## 2. How to run it
 
 ```bash
+cp .env.example .env.local    # adjust POSTGRES_PORT/URLs here if 5432 is taken
 docker-compose up -d          # Postgres 16
 pnpm install --frozen-lockfile
 pnpm migrate                  # runs migrations/NNNN_*.sql via scripts/migrate.ts
@@ -42,6 +49,22 @@ pnpm replay                   # POSTs events.json through the real HTTP endpoint
 `pnpm replay` exits non-zero if the printed `ledger.balanced` is `false` or `history.valid` is `false` —
 the two properties that actually matter. It is not diffed byte-for-byte against the brief's example; see
 [Known limitations](docs/known-limitations.md).
+
+**`pnpm replay` is not idempotent** — it POSTs the same events again, so a second run against the same
+database shows two endorsements and two rejections. `pnpm db:reset` (DROP → migrate → seed) puts the
+database back to a clean pre-replay state; reset before replaying if you want output that matches the
+brief. It refuses to run under `NODE_ENV=production` and never touches the test database.
+
+### Environment variables
+
+`.env.local` (gitignored; copy from `.env.example`) is the single place local config lives. Next.js loads
+it natively for `pnpm dev`/`pnpm build`; everything else — the `scripts/` entry points and Vitest — is
+prefixed with `pnpm with-env`, which is [dotenvx](https://dotenvx.com) injecting the same file. Real
+environment variables always win over the file, and a missing `.env.local` is ignored, so CI (which
+exports `POSTGRES_ADMIN_URL` and has no `.env.local`) works unchanged.
+
+If `5432` is already in use locally, `docker-compose.yml` reads `${POSTGRES_PORT:-5432}` — set
+`POSTGRES_PORT` and point both URLs in `.env.local` at the same port.
 
 ## 3. API design
 
@@ -98,8 +121,8 @@ Raw SQL migrations, no ORM — full DDL, transaction boundaries, and the atomici
 
 **The ID rule, stated once:** a primary key is the thing that names the row to whoever has to name it —
 caller-supplied natural key where the caller must name it (`policies`, `endorsements`, `payments`;
-for the latter two, that key *is* the idempotency key), server-minted `uuid` where nobody outside the
-database names it, composite where position *is* identity (`policy_events (policy_id, seq)`), `bigserial`
+for the latter two, that key _is_ the idempotency key), server-minted `uuid` where nobody outside the
+database names it, composite where position _is_ identity (`policy_events (policy_id, seq)`), `bigserial`
 for a gap-tolerant log (`inbound_requests`).
 
 ```mermaid
@@ -209,7 +232,7 @@ flowchart LR
   AR --> OB
 ```
 
-**Idempotency:** the business id (`END-2001`, `PAY-9001`) *is* the idempotency key — no separate header, no
+**Idempotency:** the business id (`END-2001`, `PAY-9001`) _is_ the idempotency key — no separate header, no
 token table. A stored `request_fingerprint` decides replay (`200 duplicate ignored`) vs. conflict
 (`409 IdempotencyKeyConflict`); a rejected request never consumes its key. See
 [ADR-0003](docs/adr/0003-business-id-as-idempotency-key.md). Payment settlement follows a deterministic
@@ -258,6 +281,9 @@ A single-page "split console" operator UI for `POL-1001`: status bar (premium, t
 verified pill), a merged timeline of events/documents/payments, a ledger panel showing `account_balances`
 and the always-empty `unbalanced_transactions` probe, and two forms (apply endorsement, record payment)
 built on TanStack Query `useMutation` with invalidate-and-refetch as the demonstration of API consumption.
+Below the console, a full-width **account statements** section drills each of those balances down into the
+movements that produced it — debit/credit columns and a running balance closing on the figure above,
+regrouped client-side from the transactions `GET /ledger` already returns.
 Full scope, rejected layout alternatives, and the demo path:
 [`docs/spec/frontend-ui.md`](docs/spec/frontend-ui.md).
 
@@ -268,12 +294,17 @@ entry construction, the payment waterfall, the explanation/suggested-action rule
 `toHttpResponse`). Integration tests cover the four DB-backed areas the brief requires: duplicate delivery,
 wrong-currency rollback (with a whole-database atomicity proof), balanced ledger writes, and history
 verification (including a test that tampering itself requires disabling the append-only trigger first).
-**No test boots Next** — a route handler is three statements, each covered elsewhere. Coverage is measured
-every run (`coverage.include: ['src/server/**']`) and never gated by a threshold — a stated position, not a
-silent gap. One CI job, cheapest-first (`install → format:check → lint → typecheck → test:coverage →
-build → audit`), against a real Postgres service container. `pnpm audit` blocks at `critical`, reports at
-`high` (four known `next`-pinned build-time advisories, non-blocking by necessity). Full test list and
-workflow YAML: [`docs/spec/test-plan-and-ci.md`](docs/spec/test-plan-and-ci.md).
+**No test boots Next** — a route handler is three statements, each covered elsewhere. 143 tests (unit +
+integration) pass locally against a real Postgres. Coverage is measured every run
+(`coverage.include: ['src/server/**']`) and never gated by a threshold — a stated position, not a silent
+gap; the number this build actually achieves is **84.9% statements / 82.6% branches / 87.4% functions /
+86.7% lines** (`pnpm test:coverage`). The two files sitting near 0% by design are `src/server/api/http.ts`
+and `writeHandler.ts` — the route-assembly layer the "no test boots Next" rule deliberately leaves
+untested, held to a handful of lines each so the gap stays reviewable. One CI job, cheapest-first
+(`install → format:check → lint → typecheck → test:coverage → build → audit`), against a real Postgres
+service container. `pnpm audit` blocks at `critical`, reports at `high` (four known `next`-pinned
+build-time advisories, non-blocking by necessity). Full test list and workflow YAML:
+[`docs/spec/test-plan-and-ci.md`](docs/spec/test-plan-and-ci.md).
 
 ## 9. On-call: monitor & recover
 
@@ -328,7 +359,21 @@ message or triaging the rejected-request queue, not in producing a number a fina
 5. **`pnpm audit` high-severity noise** — currently all `next`'s own pinned build-time deps, non-blocking
    by necessity; a longer-lived project would track and bump `next` on a cadence to keep that list zero.
 
-## 12. Known limitations
+## 12. Deviations from the brief
+
+Full list, with reasoning, in
+[`docs/deviations-from-the-brief.md`](docs/deviations-from-the-brief.md). Nothing there changes a required
+behaviour — proration, integer-cent money, idempotency, wrong-currency atomic rejection, balanced postings,
+and append-only hash-chained history all behave as specified, and `pnpm replay` reproduces the brief's
+Expected Output. The three a reviewer will notice first:
+
+| Deviation                                                         | One-line reason                                                         |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Document `type` is `premium_charge`, not `endorsement_adjustment` | the brief's name cannot express a credit while `amount_cents > 0` holds |
+| `history.event_count` is 3, not 2                                 | `policy_created` is chained, so the proration baseline is hash-covered  |
+| `ledger.balanced` on the summary, not on `/ledger`                | the summary asserts, the ledger proves                                  |
+
+## 13. Known limitations
 
 Every decision's known limitations are indexed, one line each, in
 [`docs/known-limitations.md`](docs/known-limitations.md), each row linking back to the ADR or spec doc

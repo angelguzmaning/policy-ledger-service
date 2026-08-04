@@ -45,9 +45,11 @@ nothing else: no document, no ledger transaction.
 A charge or credit raised against a policy, identified by a server-minted natural key
 (`BILL-` + a sequence starting at 3001, reproducing the brief's `BILL-3001` from a fresh seed).
 `document_type` is `endorsement_adjustment` or `premium_credit`; `amount_cents` is always positive — sign
-is carried by `document_type`, not by the number. **There is no stored `status` column.** A document's
-status (`open` / `partially_paid` / `paid`) is derived from its `payment_applications` at read time, which
-is what lets a billing document be genuinely append-only: nothing ever `UPDATE`s one.
+is carried by `document_type`, not by the number. **There is no stored `status` column.** An
+`endorsement_adjustment` (API-facing `premium_charge`) document's status (`open` / `partially_paid` /
+`paid`) is derived from its `payment_applications` at read time, which is what lets a billing document be
+genuinely append-only: nothing ever `UPDATE`s one. A `premium_credit` reports the distinct status `issued`
+instead — see **Premium credit**.
 
 ## Premium credit
 
@@ -57,7 +59,19 @@ mid-term). Modeled as its own `document_type` rather than a negative amount so t
 with the debit/credit sides swapped — one code path handles both signs. Written premium is therefore held
 **net** rather than routed through a separate contra-revenue account (see ADR-0002's rejected alternative).
 Balances may go negative; **no refund is issued** by this system (payment-provider integration is out of
-scope).
+scope). A premium credit **never enters the payment waterfall or the remainder sweep** (ADR-0007) — cash
+never settles it, only charges are payable — and it reports status `issued`, not `open`, so it is never
+mistaken for a document awaiting collection. It is also excluded from the open-document count the
+explanation and suggested action are built from.
+
+A credit is likewise **never consumed by a charge**, in either direction: a new charge does not draw against
+an outstanding credit, and a new credit does not draw against an already-open charge. Its whole effect is
+the ledger posting. The consequence is a split view — `open_balance_cents` is correct while the charge
+document still reports its gross amount as owed, the two differing by exactly the unconsumed credit, and the
+summary can say "the account holds a credit" directly above a timeline row saying money is outstanding.
+**When a credit note exists on a policy, `open_balance_cents` is the collectible figure and
+`billing_document.status` is not.** Worked reproduction and the shape of the fix:
+[ADR-0007, "Known limitations"](docs/adr/0007-continuous-allocation-and-credit-exclusion.md#known-limitations).
 
 ## Ledger transaction / ledger entry
 
@@ -78,13 +92,21 @@ see ADR-0004. A payment can partially settle one document and spill into the nex
 after every open document is settled is `unapplied_cents` and is not an error (it simply leaves
 `open_balance_cents` negative).
 
+Allocation state is **live**, not a one-time snapshot taken at the payment's own write: when a later
+endorsement raises a new charge, that charge's own transaction sweeps any payments still holding a
+remainder onto it, oldest-received-first (`received_at`, tiebroken on `payment_id`) — see ADR-0007. A sweep
+appends new `payment_applications` rows exactly like the original waterfall; it never revisits or mutates
+one already written, and it posts no ledger transaction (the cash movement was already posted in full when
+the payment was recorded). Only `endorsement_adjustment` documents are ever a sweep's target — a
+`premium_credit` is never payable and is excluded from both the waterfall and the sweep.
+
 ## Policy event
 
 An immutable, append-only row in `policy_events` recording one accepted command against a policy:
 `policy_created` (seq 1, always), `endorsement_applied`, or `payment_recorded`. Granularity is the
 **accepted command**, not each side-effect row — one endorsement is one event, carrying the endorsement id,
-billing document id, and ledger transaction id in its `payload`. The chain records *decisions*; the ledger
-records their *arithmetic*. See **Hash chain**.
+billing document id, and ledger transaction id in its `payload`. The chain records _decisions_; the ledger
+records their _arithmetic_. See **Hash chain**.
 
 ## Hash chain
 
@@ -102,7 +124,7 @@ localized (`seq`, one of four reasons, expected vs. stored hash). See ADR-0005.
 The mechanism that makes a retried `POST` safe. **The business id is the idempotency key** — `END-2001`,
 `PAY-9001` — arriving in the request body, never a separate `Idempotency-Key` header, and never
 server-generated. It is the row's own primary key, so uniqueness is enforced by the database `UNIQUE`
-constraint the primary key already gives you. Whether a redelivery is the *same* request or a *conflicting*
+constraint the primary key already gives you. Whether a redelivery is the _same_ request or a _conflicting_
 one is decided by comparing a stored `request_fingerprint` (SHA-256 of the canonicalized, validated
 request) against a freshly computed one: match → `200 duplicate ignored`; mismatch → `409
 IdempotencyKeyConflict`. A rejected request (any `4xx`) rolls back and **never consumes its key** — the
@@ -113,7 +135,7 @@ same id can be resubmitted with corrected data. See ADR-0003.
 A record in `inbound_requests` of every endorsement/payment `POST` that reached the service, written on a
 **separate database connection outside the business transaction**, so a rolled-back write still leaves a
 receipt. Carries `outcome` (`accepted` / `rejected`), the HTTP status, the error code if any, and the
-request body verbatim. This is what lets a wrong-currency 3am payment be *discoverable* rather than
+request body verbatim. This is what lets a wrong-currency 3am payment be _discoverable_ rather than
 silently vanish, and what lets `GET /policies/:id` report `rejected_events` and per-item
 `idempotency_result` without treating a refusal as part of the policy's own history. It carries no foreign
 key to `policies`, deliberately — a request naming a policy that doesn't exist is exactly the kind that

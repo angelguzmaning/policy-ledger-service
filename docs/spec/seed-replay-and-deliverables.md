@@ -133,17 +133,17 @@ The tamper demo is the more differentiating, hardest-earned piece of this build 
 the brief's "traceable and safe" evaluation line directly; the EUR rejection is still shown
 on-screen (in the replay script's `rejected_events` output) but isn't the dedicated beat.
 
-| Time | Beat | On-screen |
-|---|---|---|
-| 0:00–0:30 | What I built, how to run it | `docker-compose up`, `pnpm migrate && pnpm db:seed && pnpm dev` |
-| 0:30–1:30 | SQL schema, invariants, transaction boundaries | ERD (#9), `withTransaction`, append-only + balance triggers |
-| 1:30–2:30 | Proration & rounding rule | `business-rules.txt` vs. code, epoch-days, `premium_credit` case |
-| 2:30–3:30 | Duplicate endorsements & payments | idempotency sequence diagram (#7), replay script showing `duplicate ignored` + the EUR `rejected_events` entry |
-| 3:30–4:30 | Double-entry ledger balance | T-account diagram (#6), `GET /ledger`, `unbalanced_transactions` always-empty probe |
-| 4:30–5:30 | Frontend consuming the API | split-console UI, apply endorsement + invalidate/refetch |
-| 5:30–7:00 | **Failure-path demo: tamper + verify** | `psql` `UPDATE` on a historical event, `GET /history/verify` catching it, break-point localization |
-| 7:00–7:45 | AI usage + what I'd improve | — |
-| 7:45–8:00 | Close | — |
+| Time      | Beat                                           | On-screen                                                                                                      |
+| --------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 0:00–0:30 | What I built, how to run it                    | `docker-compose up`, `pnpm migrate && pnpm db:seed && pnpm dev`                                                |
+| 0:30–1:30 | SQL schema, invariants, transaction boundaries | ERD (#9), `withTransaction`, append-only + balance triggers                                                    |
+| 1:30–2:30 | Proration & rounding rule                      | `business-rules.txt` vs. code, epoch-days, `premium_credit` case                                               |
+| 2:30–3:30 | Duplicate endorsements & payments              | idempotency sequence diagram (#7), replay script showing `duplicate ignored` + the EUR `rejected_events` entry |
+| 3:30–4:30 | Double-entry ledger balance                    | T-account diagram (#6), `GET /ledger`, `unbalanced_transactions` always-empty probe                            |
+| 4:30–5:30 | Frontend consuming the API                     | split-console UI, apply endorsement + invalidate/refetch                                                       |
+| 5:30–7:00 | **Failure-path demo: tamper + verify**         | `psql` `UPDATE` on a historical event, `GET /history/verify` catching it, break-point localization             |
+| 7:00–7:45 | AI usage + what I'd improve                    | —                                                                                                              |
+| 7:45–8:00 | Close                                          | —                                                                                                              |
 
 ## Known limitations
 

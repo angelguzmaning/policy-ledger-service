@@ -17,7 +17,7 @@ the same outputs on every run, on every machine, forever — replay depends on i
    and DST — none of which belong in a proration calculation that must be reproducible from a seed file
    years later on a different machine.
 2. **Timestamps that feed the hash chain.** `recorded_at` on a `policy_events` row is part of the
-   `event_hash` preimage. If the stored value can be *re-rendered* differently depending on session state,
+   `event_hash` preimage. If the stored value can be _re-rendered_ differently depending on session state,
    the hash becomes unstable even though nothing about the event changed.
 
 ## Decision
@@ -55,7 +55,7 @@ indexing.
 ## Rejected alternatives
 
 - **Let `pg` parse `DATE` into a JS `Date` and normalize with `.toISOString()` at the boundary.**
-  Rejected because normalization happens *after* the local-midnight conversion has already run — a date
+  Rejected because normalization happens _after_ the local-midnight conversion has already run — a date
   near a DST boundary or a UTC offset can shift by a day before the normalization code ever sees it. The
   bug is upstream of anywhere a fix could be applied.
 - **Store `recorded_at` as `timestamptz` and pin the session `TimeZone` to `UTC` everywhere (app, tests,
@@ -82,3 +82,13 @@ break point, confirm via `git blame`/deploy history that a migration ran in the 
 `recorded_at` from a pre-migration backup rather than attempting to "fix" the hash forward. The
 `hash_version` column (ADR-0005) exists precisely so a genuine scheme change can be versioned instead of
 silently rewriting history.
+
+**`src/server/domain/dates.ts` hand-rolls civil-calendar arithmetic instead of using a library.** A future
+improvement would reach for `date-fns`, but plain `date-fns` is `Date`-based and would reintroduce exactly the
+local-timezone dependency this ADR exists to avoid. The viable forms are `@date-fns/utc`'s `UTCDate` (a `Date`
+subclass pinned to UTC), `date-fns` confined to edge-of-system formatting that never touches the domain core, or
+`Temporal.PlainDate` once it is baseline in the Node versions this service targets. **How you would notice:**
+nothing forces this — `daysFromCivil`/`parseDate` are ~40 lines, unit-tested, and correct; the cost is only that
+a maintainer unfamiliar with Howard Hinnant's algorithm has to read it instead of recognizing a library call.
+**What you would do:** swap in `@date-fns/utc` or `Temporal.PlainDate` behind the same `parseDate`/epoch-day
+signature so the domain core's callers see no change.

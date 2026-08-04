@@ -69,7 +69,11 @@ fingerprint — one primitive, two jobs.
   "seq": 2,
   "event_type": "endorsement_applied",
   "recorded_at": "2026-08-01T12:00:00.000Z",
-  "payload": { "endorsement_id": "END-2001", "effective_date": "2026-07-01", "premium_delta_cents": 12099 },
+  "payload": {
+    "endorsement_id": "END-2001",
+    "effective_date": "2026-07-01",
+    "premium_delta_cents": 12099
+  },
   "previous_hash": "a3f1…"
 }
 ```
@@ -77,7 +81,7 @@ fingerprint — one primitive, two jobs.
 `event_hash = sha256(utf8(canonicalJson(preimage)))`, lowercase hex. Stated as a checkable invariant: any
 column left out of the preimage is a license to edit it undetected, so the preimage builder can be read
 next to the `CREATE TABLE` and every column should be present. `hash_version` exists so the scheme can
-rotate — a migration that *rewrites* historical hashes instead of versioning them silently destroys the
+rotate — a migration that _rewrites_ historical hashes instead of versioning them silently destroys the
 evidence (see Known limitations). `recorded_at` is `TEXT`, not `timestamptz` — see ADR-0001, which states
 the general rule this specific choice is an instance of.
 
@@ -89,8 +93,8 @@ command, not per side-effect row. The chain records decisions; the ledger record
 **`policy_created` is included, against the brief's own sample** (which shows `event_count: 2` for one
 endorsement plus one payment, implying no genesis event). Included because it makes the chain
 **self-sufficient**: without it, `term_start`, `term_end`, and the original premium live only in the
-mutable `policies` row, so the chain would protect every step of the arithmetic *except its starting
-point* — editing `term_end` directly would leave every historical proration wrong while `verify` still
+mutable `policies` row, so the chain would protect every step of the arithmetic _except its starting
+point_ — editing `term_end` directly would leave every historical proration wrong while `verify` still
 returned `valid: true`. With it, the current premium is recomputable from event 1 forward and compared
 against the `policies` row as an independent check. The cost — `event_count` reads 3 where the brief's
 example shows 2 — is mitigated by returning the event-type list alongside the count, so the difference
@@ -157,7 +161,7 @@ clip.
 ### Rejections are logged, not chained
 
 A request the service refuses (e.g. `PAY-9002` in EUR) is **not** written to `policy_events` — the policy
-was not affected, so the chain stays a record of what happened *to the policy*. But it is written to
+was not affected, so the chain stays a record of what happened _to the policy_. But it is written to
 `inbound_requests`, an append-only-log-shaped table (no append-only trigger of its own; it is a receipt
 log, not part of the auditable financial core) on a **separate database connection outside the business
 transaction**, so the rollback that protects the ledger cannot erase the receipt. It carries no foreign key
@@ -212,19 +216,22 @@ database) so a wholesale deletion is at least detectable against the last checkp
 **Append-only triggers are droppable by the table owner, and migrations run as owner** — a well-meaning
 backfill can disable the trigger, rewrite history, and re-enable it, leaving no trace in the table itself.
 _How you would notice:_ nothing from the chain alone; this is why the design's honest answer to "why a
-chain at all, given the trigger" is that the trigger is a *control* (preventable, silently bypassable by
-whoever administers the database) and the chain is *evidence* (arithmetic, verifiable by an outside party
+chain at all, given the trigger" is that the trigger is a _control_ (preventable, silently bypassable by
+whoever administers the database) and the chain is _evidence_ (arithmetic, verifiable by an outside party
 with `sha256sum` and no access to this database or trust in its operators). _What you would do:_ export the
 chain periodically to an append-only store this database's own administrators cannot write to.
 
-**No `TRUNCATE` guard** — the trigger is row-level and `TRUNCATE` bypasses it entirely, and the test harness
-depends on `TRUNCATE` between tests. _How you would notice:_ a `TRUNCATE policy_events` in production would
-wipe the chain silently. _What you would do:_ a statement-level `BEFORE TRUNCATE` trigger, deliberately not
-added here because it would also break the test harness; a production deployment would want a role that
-lacks `TRUNCATE` privilege on these tables instead of a trigger.
+**No `TRUNCATE` guard** — the same `refuse_mutation()` trigger backs all four append-only tables
+(`policy_events`, `payment_applications`, `ledger_transactions`, `ledger_entries`), and on every one of them it
+is row-level, so `TRUNCATE` bypasses it entirely; the test harness depends on `TRUNCATE` between tests.
+_How you would notice:_ a `TRUNCATE policy_events` (or any of the other three) in production would wipe that
+table's history silently, with no trigger firing to object. _What you would do:_ a statement-level
+`BEFORE TRUNCATE` trigger on each table, deliberately not added here because it would also break the test
+harness; a production deployment would want a role that lacks `TRUNCATE` privilege on these tables instead of
+a trigger.
 
 **The chain protects recorded events, not the mutable `policies` row** — `policy_created` replay (comparing
-the recomputed premium against the live `policies.annual_premium_cents`) is the *mitigation*, not a
+the recomputed premium against the live `policies.annual_premium_cents`) is the _mitigation_, not a
 guarantee; if both the chain and the row were edited consistently by someone with database access, replay
 would agree with the tampered row. _How you would notice:_ nothing automatic; this is a residual trust
 boundary at "whoever can run arbitrary SQL as the owner." _What you would do:_ the external-checkpoint

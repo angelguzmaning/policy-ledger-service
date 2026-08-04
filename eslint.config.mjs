@@ -18,6 +18,14 @@ const eslintConfig = defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    rules: {
+      // A leading underscore marks a deliberately-discarded binding (the
+      // strip in src/server/api/schemas.ts is the canonical example).
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' },
+      ],
+    },
   },
   // Config files sit outside the typed program; lint them untyped.
   {

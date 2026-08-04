@@ -8,7 +8,7 @@ chart of accounts, and where balance is enforced).
 ## Context
 
 The ledger must implement real double-entry bookkeeping: every transaction's legs sum to zero, every
-transaction has at least two legs, and a negative endorsement delta must post through the *same* code path
+transaction has at least two legs, and a negative endorsement delta must post through the _same_ code path
 as a positive one rather than a parallel branch. Two decisions were contested: how a leg's direction
 (debit vs. credit) is represented, and where "this transaction balances" is actually enforced.
 
@@ -97,18 +97,18 @@ shape.
 
 A `DEFERRABLE INITIALLY DEFERRED` constraint trigger (`assert_transaction_balanced`) fires once per
 `ledger_transaction_id` **at `COMMIT`**, checking `SUM(amount_cents) = 0 AND COUNT(*) >= 2`. Deferral is
-load-bearing: legs are inserted one row at a time, so an *immediate* trigger would reject every valid write
+load-bearing: legs are inserted one row at a time, so an _immediate_ trigger would reject every valid write
 partway through. Because the check runs at commit, the service can insert legs in any order and the
 transaction stands or falls as a whole.
 
 The reasoning this survives on: **a database transaction gives atomicity, not correctness.** A sign error
-or a rounding bug commits atomically and *wrongly* — `BEGIN`/`COMMIT` guarantees all-or-nothing, not
+or a rounding bug commits atomically and _wrongly_ — `BEGIN`/`COMMIT` guarantees all-or-nothing, not
 zero-sum. `CHECK` constraints are per-row and structurally cannot express a cross-row `SUM`, which is why
 this needed a trigger rather than a `CHECK (amount_cents ...)` clause.
 
 `GET /ledger` then **proves** balance rather than asserting it: `account_balances`, `sum_all_entries`, and
 an `unbalanced_transactions` probe (`GROUP BY ledger_transaction_id HAVING SUM(amount_cents) <> 0`) that is
-always empty *by construction*, given the trigger — the on-call note (README) points at this exact query
+always empty _by construction_, given the trigger — the on-call note (README) points at this exact query
 as the first thing to run at 3am.
 
 ## Rejected alternatives
@@ -141,6 +141,16 @@ _How you would notice:_ a reporting requirement asking for gross written premium
 separately would find only the net figure in this schema. _What you would do:_ add a `return_premium`
 account and route negative deltas there instead of mirroring — a migration, not a redesign, since the
 posting builder already isolates "which accounts, which signs" in one function.
+
+**`ledger_transactions` has no ordering column.** Transactions are read `ORDER BY posted_at,
+ledger_transaction_id`, and that id is a random `gen_random_uuid()` — so two transactions committed within the
+same `now()` instant order arbitrarily, and can order _differently_ between two reads. Balances are unaffected
+(a sum does not care about order) and this was invisible while the API only exposed totals. _How you would
+notice:_ the UI's account statements section renders a **running balance**, so same-instant transactions could
+show different intermediate figures on two page loads while still closing on the same correct total — and a
+replay would reproduce the rows in a different order. _What you would do:_ give `ledger_transactions` a
+per-policy sequence column (the shape `policy_events.seq` already uses) and order by it, making the tiebreak
+total and the order itself part of the recorded fact rather than an artifact of a random id.
 
 **Oldest-open-first payment allocation is a stated default, not a configurable policy** (see ADR-0004 for
 the full reasoning) — noted here because it is this ADR's ledger that the waterfall writes into.

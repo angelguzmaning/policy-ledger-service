@@ -25,11 +25,11 @@ Rejected two structural alternatives, both prototyped:
 
 - **Card dashboard + tabs** (variant B) — summary cards, a tab bar switching between Endorsements / Payments /
   Ledger, forms behind toggle buttons. More screens for the same information; the tab bar hides the ledger and
-  payments behind clicks the reviewer has to know to make, and the video is a *single continuous flow*, not a
+  payments behind clicks the reviewer has to know to make, and the video is a _single continuous flow_, not a
   browse session.
 - **Raw log / terminal** (variant C) — every request/response shown as literal JSON in a scrolling log. Genuinely
-  tested "is showing the JSON verbatim actually persuasive" (ticket item 3) and the answer is *partially*: raw
-  JSON is the right instinct for the response envelope (see §4), but as the *entire* UI it stops being an operator
+  tested "is showing the JSON verbatim actually persuasive" (ticket item 3) and the answer is _partially_: raw
+  JSON is the right instinct for the response envelope (see §4), but as the _entire_ UI it stops being an operator
   view and becomes a network tab with extra steps — it fails the brief's "make the backend workflow understandable
   to an operator" test.
 
@@ -50,20 +50,63 @@ Rejected two structural alternatives, both prototyped:
 │ Ledger (account         │ Record Received Payment       │
 │  balances +             │  amount_cents / currency       │
 │  unbalanced probe)      │  [Submit]                      │
-└───────────────────────┴─────────────────────────────┘
+├───────────────────────┴─────────────────────────────┤
+│ ─────────────────── separator ───────────────────────  │
+│ Account statements (full width)                         │
+│  one table per account with movements:                  │
+│  date · source · description · debit · credit · balance │
+└───────────────────────────────────────────────────┘
 ```
 
-Two additions versus the prototyped variant A, made while writing this doc rather than deferred to implementation:
+**Payment ordering within the timeline**: payments are listed in **receipt order**, earliest `received_at` first,
+tiebroken on `payment_id` for a total, stable order (`GET /policies/:policyId`'s `payments[]` is pre-sorted this
+way — the component renders it as returned, no client-side sort). Each payment row shows its `received_at` date so
+the ordering is legible, not implicit. This is deliberately **not** the order payments were applied to billing
+documents — allocation stays arrival order (ADR-0004 "Allocation order vs. display order"), so a back-dated
+payment can appear earlier in the timeline than a payment recorded before it, without retroactively changing what
+it settled.
+
+Additions versus the prototyped variant A. The first and third were made while writing this doc rather than
+deferred to implementation; the account statements section was added after the build, on the observation that the
+Ledger panel asserts balances the reviewer cannot then take apart:
 
 - **A Ledger panel**, under the timeline, rendering `GET /ledger`'s `account_balances` and the
   `unbalanced_transactions` probe verbatim (always empty, by construction — the on-call note's first query). The
   prototype folded ledger correctness into the summary's `open_balance_cents`; the brief separately asks for a
-  "ledger summary," and #6/#10 built a whole endpoint whose entire point is to *prove* balance rather than assert
+  "ledger summary," and #6/#10 built a whole endpoint whose entire point is to _prove_ balance rather than assert
   it. Not showing it wastes the strongest artifact this backend has.
+- **An account statements section**, full width, below the split console and separated from it by a rule. The
+  Ledger panel above answers "what are the balances"; this answers "how did each balance get there" — one table
+  per account **that has movements**, oldest first, with `date · source · description · debit · credit` columns
+  and a running balance closing on the exact figure the panel shows. It is a pure client-side regrouping of the
+  `transactions[]` `GET /ledger` already returns (`src/lib/accountStatements.ts`) — no query, endpoint, or schema
+  change, and the entries were previously fetched and discarded.
 - **An explicit "Verify History" action**, calling `GET /history/verify` rather than only reading the `history`
   block embedded in `GET /policies/:id`. The embedded block is enough for the status pill at rest, but the demo
   path (§5) needs a discrete, clickable moment that exercises the dedicated endpoint — otherwise one of the six
   required endpoints is never visibly called during the walkthrough.
+
+### Rejected alternatives for the statements section
+
+- **An accordion inside the Ledger panel** — click an account row, its movements unfold beneath it. Rejected
+  because it hides information behind a click the reviewer has to know to make, which is the same criticism §2
+  levels at the rejected card-dashboard-plus-tabs variant. A section that is simply _there_, below the fold,
+  costs the one-screen demo flow nothing: the console above is unchanged at rest.
+- **Always-expanded movements inside the Ledger panel** — same information, no interaction, but it roughly
+  triples that panel's height and breaks the no-scrolling-between-sections property the layout is built on.
+- **Signed amounts in a single column** (`-120.99` for `written_premium`, matching the wire format verbatim).
+  Rejected on the running balance: a credit-normal account's total marches _downward_ as the business writes
+  premium, which reads as a bug on screen. Debit/credit columns are the convention an actual statement uses and
+  make the question disappear. The split is presentational only — `direction` is read from the response, never
+  recomputed, so ADR-0002's "no `CASE` anywhere" property holds all the way to the component.
+- **Normal-balance-aware display** (flip credit-normal accounts to read positive). Rejected as the one option
+  that _would_ reintroduce a sign inversion keyed on account metadata — precisely the site ADR-0002 set out to
+  eliminate — and the only one requiring `ledger_accounts.normal_balance` to be exposed by the API. The account
+  kind is shown as a label instead, hardcoded in the component, never used in arithmetic.
+- **Annotating rows with the billing documents a payment settled** (`PAY-9002 → BILL-3001 60.00, …`). Rejected as
+  a category error: the general ledger and the subsidiary billing ledger are different books, meant to reconcile
+  rather than merge (ADR-0004). `payment_applications` is exposed by no endpoint, so this was also the only
+  option requiring new server work; the Timeline panel is where the document story belongs.
 
 ## 3. Data fetching and mutations
 
@@ -81,12 +124,14 @@ Two additions versus the prototyped variant A, made while writing this doc rathe
   `POST` responses are deliberately narrow (`#10`: "the effects of this request only") specifically so this
   refetch is load-bearing rather than redundant.
 - **Query defaults, per `#16`**: `retry: false` (a `retry: 3` default would make the deliberate `422
-  CurrencyMismatch` demo hang through three silent retries before rendering), `staleTime: 30_000`,
+CurrencyMismatch` demo hang through three silent retries before rendering), `staleTime: 30_000`,
   `refetchOnWindowFocus: false`.
 - **The idempotency key is minted at form mount**, `useState(() => crypto.randomUUID())`, per `#7` — verified in
   the prototype's `useDemoForms` hook and carried forward unchanged. Minting on submit instead would mean a
   double-click mints two keys and the idempotency guarantee protects nothing; this is a correctness rule, not a
-  style choice.
+  style choice. The key rotates in `onSuccess` and only there: while a submit is in flight or has failed, the
+  operator's retry is the _same_ request and must carry the same key; once the write has landed, the next submit is
+  a genuinely new payment or endorsement and would otherwise be refused as a duplicate of the one before it.
 
 ## 4. Error rendering
 

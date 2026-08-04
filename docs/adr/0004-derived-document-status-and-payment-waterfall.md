@@ -4,7 +4,9 @@
 
 Accepted. Source: [#6](https://github.com/angelguzmaning/policy-ledger-service/issues/6) (ledger model)
 and [#7](https://github.com/angelguzmaning/policy-ledger-service/issues/7) (idempotency contract, for the
-append-only consequence).
+append-only consequence). Extended by [ADR-0007](0007-continuous-allocation-and-credit-exclusion.md), which
+adds the remainder sweep and excludes premium credits from the waterfall — the allocation-order and
+display-order rules below are otherwise unchanged.
 
 ## Context
 
@@ -37,9 +39,28 @@ with no open documents applies nothing and the payment's `status` is `unapplied`
 a rejection. Cash is still posted; `open_balance_cents` simply goes negative.
 
 `open_balance_cents` itself is **ledger-derived** — the policy's `premium_receivable` account balance —
-never a column on `billing_documents` or `policies`. Billing documents reconcile *to* the ledger; a stored
+never a column on `billing_documents` or `policies`. Billing documents reconcile _to_ the ledger; a stored
 balance column was rejected as denormalization that could drift from the entries that are supposed to back
 it.
+
+### Allocation order vs. display order
+
+Allocation order is **arrival order** — the order payments were recorded, which is also the order they were
+applied against whatever documents happened to be open at that instant (see above). It stays that way
+regardless of when the money actually arrived: a back-dated payment settles whatever is open when it lands,
+it does not reach back and re-cut allocations that already happened. Reversing a prior application isn't
+available under the append-only rule — it would need a schema change relaxing the positive-amount check, an
+exemption from the shared trigger, and a new reversal concept distinguishable from an application. Rejecting
+back-dated payments outright was also considered and refused: the payment already happened in another
+system, so declining a genuine receipt destroys a fact rather than protecting one.
+
+**Display order is receipt order** — `received_at` (earliest first), tiebroken on `payment_id` for a total,
+stable order. `GET /policies/:policyId`'s `payments[]` is sorted this way (`docs/spec/api-contract.md` §6),
+and the operator timeline (`docs/spec/frontend-ui.md` §2) renders it in that order with the date visible on
+each row, so an operator reading the timeline sees payments in the order the money arrived even though the
+system settled them in the order they were keyed in. This is the first place `received_at` is load-bearing;
+until this ADR it was validated on the way in, stored, and echoed on the write response, and used for
+nothing else.
 
 ## Rejected alternatives
 
@@ -51,7 +72,7 @@ it.
 - **A stored `open_balance_cents` column on `policies` or `billing_documents`.** Rejected on the same
   drift concern: a number that must be kept in sync by every write path is a number that will eventually
   be wrong on one of them. Deriving it from `SUM(ledger_entries.amount_cents)` for the `premium_receivable`
-  account means it is definitionally correct — it cannot disagree with the ledger, because it *is* the
+  account means it is definitionally correct — it cannot disagree with the ledger, because it _is_ the
   ledger.
 - **Payments that name their own target billing document** (remittance-advice-style, carrying a
   `billing_document_id`), and a configurable allocation policy (proportional, newest-first,
@@ -69,6 +90,12 @@ _How you would notice:_ a payment that "should" have settled a specific document
 remittance advice not modeled here) instead pays down whatever is oldest. _What you would do:_ extend the
 payment request shape to optionally carry a target `billing_document_id`, and fall back to the waterfall
 only when it's absent — `payment_applications`' shape does not need to change.
+
+**Superseded:** this section originally also listed "a payment's remainder that finds nothing open is stuck
+`unapplied` forever, even once a later charge could absorb it" as a known limitation of this ADR. That is
+resolved by [ADR-0007](0007-continuous-allocation-and-credit-exclusion.md)'s remainder sweep — a remainder
+is drawn down the moment a later endorsement raises a new charge, not stranded. ADR-0007's own Known
+limitations section carries what is still true after that fix.
 
 **Document status and open balance are computed on every read, not cached.** At take-home scale (a handful
 of documents per policy) this is free. _How you would notice:_ p99 latency on `GET /policies/:id` climbing

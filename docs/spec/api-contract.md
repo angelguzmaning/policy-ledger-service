@@ -242,6 +242,11 @@ refetches the policy view, which is precisely the refetch-after-mutation flow `#
 reason to be in this build. Returning the full policy and seeding the cache would delete the thing the frontend
 exists to demonstrate.
 
+When the delta is positive, `billing_document.status` reflects the **post-sweep** state, not the state the
+document was written in: any payment remainders already on the policy settle against it, in the same
+transaction, before the response is built (ADR-0007). A charge fully covered by an existing remainder comes
+back `paid` in the very response that created it, not `open`.
+
 ```json
 {
   "endorsement_id": "END-2001",
@@ -431,7 +436,8 @@ every difference is an addition. The reviewer can diff our response against thei
       "external_payment_id": "PAY-9001",
       "amount_cents": 12099,
       "status": "applied",
-      "idempotency_result": "duplicate ignored"
+      "idempotency_result": "duplicate ignored",
+      "received_at": "2026-07-03T18:30:00Z"
     }
   ],
   "open_balance_cents": 0,
@@ -449,24 +455,34 @@ every difference is an addition. The reviewer can diff our response against thei
   },
   "rejected_events": [{ "id": "PAY-9002", "reason": "currency mismatch" }],
   "explanation": "Policy POL-1001 is active with an annual premium of $1,440.00 USD for the term 2026-01-01 to 2027-01-01. 1 endorsement has been applied, most recently END-2001 effective 2026-07-01, which raised the annual premium by $240.00 and billed $120.99 pro-rata. The account is fully paid; there is no outstanding balance. The policy history chain of 3 events verifies intact. 1 inbound request was rejected: PAY-9002 (currency mismatch).",
+  "explanation_clauses": [
+    "Policy POL-1001 is active with an annual premium of $1,440.00 USD for the term 2026-01-01 to 2027-01-01.",
+    "1 endorsement has been applied, most recently END-2001 effective 2026-07-01, which raised the annual premium by $240.00 and billed $120.99 pro-rata.",
+    "The account is fully paid; there is no outstanding balance.",
+    "The policy history chain of 3 events verifies intact.",
+    "1 inbound request was rejected: PAY-9002 (currency mismatch)."
+  ],
   "suggested_action": "No action required"
 }
 ```
 
-### Additions, and the three deviations
+### Additions, and the four deviations
 
-| Field                                          | Why                                                                   |
-| ---------------------------------------------- | --------------------------------------------------------------------- |
-| `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view |
-| `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call     |
-| `history.events`                               | makes the `event_count` deviation explain itself on sight             |
-| `explanation`                                  | Required Output Field; see §8                                         |
+| Field                                          | Why                                                                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `homeowner_id`, `currency`, `term_start/end`   | the brief's Frontend Requirement names all of them in the policy view                                                   |
+| `endorsements[].effective_date`, `delta_cents` | the proration result is otherwise invisible without a second call                                                       |
+| `payments[].received_at`                       | the date the timeline sorts payments by (see below); previously validated and echoed on write but never exposed on read |
+| `history.events`                               | makes the `event_count` deviation explain itself on sight                                                               |
+| `explanation`                                  | Required Output Field; see §8                                                                                           |
+| `explanation_clauses`                          | the same clauses of §9 unjoined, so the UI paragraphs them instead of re-splitting prose                                |
 
-| Deviation                                          | Reason                                                                                                                                                           |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type` is `premium_charge` / `premium_credit`      | `#5` — direction carried by type with `CHECK (amount_cents > 0)` intact; the brief's `endorsement_adjustment` cannot express a credit                            |
-| `event_count` is 3, not 2                          | `#8` — `policy_created` is in the chain so the premium baseline is hash-covered; the adjacent `events` list makes the difference self-evident                    |
-| `ledger.balanced` exists here but not on `/ledger` | Required Output Fields asks for "balanced status"; `#6` refused a bare boolean on the ledger endpoint. Split by role: **the summary asserts, the ledger proves** |
+| Deviation                                                 | Reason                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type` is `premium_charge` / `premium_credit`             | `#5` — direction carried by type with `CHECK (amount_cents > 0)` intact; the brief's `endorsement_adjustment` cannot express a credit                                                                                   |
+| `event_count` is 3, not 2                                 | `#8` — `policy_created` is in the chain so the premium baseline is hash-covered; the adjacent `events` list makes the difference self-evident                                                                           |
+| `ledger.balanced` exists here but not on `/ledger`        | Required Output Fields asks for "balanced status"; `#6` refused a bare boolean on the ledger endpoint. Split by role: **the summary asserts, the ledger proves**                                                        |
+| `billing_document.status` can be `issued`, a fourth value | `#19`/[ADR-0007](../adr/0007-continuous-allocation-and-credit-exclusion.md) — a `premium_credit` is never payable and reporting it `open` reads as "awaiting payment," backwards for money the insurer owes the insured |
 
 `ledger.balanced` is computed, never stored:
 `sum_all_entries === 0 && unbalanced_transactions.length === 0`.
@@ -474,6 +490,11 @@ every difference is an addition. The reviewer can diff our response against thei
 `idempotency_result` on a `GET` comes from the `inbound_requests` log (`#8`) — it reports the last delivery outcome
 for that id, which is what makes the brief's example reproducible literally instead of requiring the interpretive
 bet that the example was really a replay report.
+
+`payments[]` is ordered by `received_at` (earliest first), tiebroken on `payment_id` — **display order**, not the
+oldest-open-first **allocation order** ADR-0004 uses to route cash against open documents. The two are deliberately
+different (ADR-0004 §"Allocation order vs. display order"): a back-dated payment settles whatever is open when it
+lands, it does not reach back and re-cut allocations already made.
 
 ### Failures
 
@@ -724,3 +745,11 @@ to the client, where locale lives.
 **No request-level rate limiting or payload size cap beyond Next's default.** A single oversized body reaches Zod
 before it is rejected. _How you would notice:_ memory pressure on the route handlers. _What you would do:_ a body
 size limit in middleware; out of scope here as the brief excludes production hardening.
+
+**A back-dated endorsement is rejected outright, not reconciled.** `OutOfOrderEndorsement` fires whenever
+`effective_date` is earlier than the latest applied endorsement's, with no path to accept it. Accepting one would
+mean recomputing every later proration and issuing compensating billing documents and ledger entries — a
+correction workflow this service does not implement. _How you would notice:_ an upstream that occasionally submits
+endorsements out of receipt order sees a steady trickle of `422`s it cannot self-resolve by retrying.
+_What you would do:_ a dedicated reconciliation endpoint that reprocesses the affected chain of endorsements under
+the policy lock, rather than trying to make the single-endorsement path handle it.
