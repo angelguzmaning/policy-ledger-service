@@ -22,8 +22,113 @@ import {
   systemClock,
   toApiBillingDocumentType,
   type Clock,
+  type PolicyRow,
 } from '@/server/service/shared'
 import type { BillingDocumentSummary, EndorsementResult } from '@/server/service/types'
+
+interface EndorsementDates {
+  termStartDays: number
+  termEndDays: number
+  effectiveDateDays: number
+}
+
+/**
+ * The three rejection paths, isolated so `applyEndorsement` reads as
+ * validate -> prorate -> record -> bill. The out-of-order check queries the
+ * latest endorsement under the caller's already-held policy lock, so it is
+ * async and must run before any of the writes below it.
+ */
+async function assertEndorsementApplicable(
+  tx: Tx,
+  policy: PolicyRow,
+  command: EndorsementCommand,
+  dates: EndorsementDates,
+): Promise<void> {
+  if (policy.status !== 'active') {
+    throw new PolicyNotActiveError(policy.policy_id, policy.status)
+  }
+
+  const { termStartDays, termEndDays, effectiveDateDays } = dates
+  if (effectiveDateDays < termStartDays || effectiveDateDays > termEndDays) {
+    throw new OutOfTermError(command.effective_date, policy.term_start, policy.term_end)
+  }
+
+  const { rows: latestRows } = await tx.query<{ effective_date: string }>(
+    'SELECT effective_date FROM endorsements WHERE policy_id = $1 ORDER BY policy_seq DESC LIMIT 1',
+    [policy.policy_id],
+  )
+  const latest = latestRows[0]
+  if (latest && effectiveDateDays < parseDate(latest.effective_date)) {
+    throw new OutOfOrderEndorsementError(command.effective_date, latest.effective_date)
+  }
+}
+
+interface BillingAndPostingInput {
+  policyId: string
+  endorsementId: string
+  deltaCents: number
+  currency: string
+  effectiveDate: string
+}
+
+/**
+ * Issues the billing document for a non-zero endorsement delta, sweeps it
+ * against any unapplied payment remainders (charges only -- ADR-0007), and
+ * posts the ledger transaction and entries. One unit because none of the
+ * three steps is meaningful without the others.
+ */
+async function issueBillingDocumentAndPost(tx: Tx, input: BillingAndPostingInput): Promise<void> {
+  const { policyId, endorsementId, deltaCents, currency, effectiveDate } = input
+  const documentType = deltaCents > 0 ? 'endorsement_adjustment' : 'premium_credit'
+  const amountCents = Math.abs(deltaCents)
+
+  const { rows: billingDocRows } = await tx.query<{ billing_document_id: string }>(
+    `INSERT INTO billing_documents
+       (policy_id, endorsement_id, document_type, amount_cents, currency, due_date)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING billing_document_id`,
+    [policyId, endorsementId, documentType, amountCents, currency, effectiveDate],
+  )
+  const billingDocumentId = billingDocRows[0]?.billing_document_id
+  if (!billingDocumentId) throw new Error('billing_documents insert returned no id')
+
+  // Only charges are payable (ADR-0007) -- a premium credit stays out of the sweep entirely,
+  // and cash never settles it.
+  if (documentType === 'endorsement_adjustment') {
+    const remainders = await loadUnappliedPaymentRemainders(tx, policyId)
+    const { applications } = sweepRemainders(
+      amountCents,
+      remainders.map((r) => ({
+        paymentId: r.payment_id,
+        remainderCents: Number(r.remainder_cents),
+      })),
+    )
+    await insertPaymentApplications(
+      tx,
+      applications.map((a) => ({
+        paymentId: a.paymentId,
+        billingDocumentId,
+        amountCents: a.amountCents,
+      })),
+    )
+  }
+
+  const { rows: txRows } = await tx.query<{ ledger_transaction_id: string }>(
+    `INSERT INTO ledger_transactions (policy_id, source_type, source_id, description)
+     VALUES ($1, 'endorsement', $2, $3)
+     RETURNING ledger_transaction_id`,
+    [policyId, endorsementId, `Premium delta for endorsement ${endorsementId}`],
+  )
+  const ledgerTransactionId = txRows[0]?.ledger_transaction_id
+  if (!ledgerTransactionId) throw new Error('ledger_transactions insert returned no id')
+
+  for (const entry of postEndorsement(deltaCents)) {
+    await tx.query(
+      'INSERT INTO ledger_entries (ledger_transaction_id, account_code, amount_cents, currency) VALUES ($1, $2, $3, $4)',
+      [ledgerTransactionId, entry.account, entry.amountCents, currency],
+    )
+  }
+}
 
 interface EndorsementRow {
   endorsement_id: string
@@ -117,6 +222,10 @@ export async function applyEndorsement(
   clock: Clock = systemClock,
 ): Promise<EndorsementResult> {
   return withTransaction(db, async (tx) => {
+    // Deliberately the first statement: `FOR UPDATE` here serializes every reader/writer of this
+    // policy behind one lock, which is what makes the read-then-write sequence below (the
+    // out-of-order check, `seq`/hash-chain allocation, the remainder sweep) race-free. See
+    // docs/adr/0005-hash-chain-design.md and `appendPolicyEvent` in shared.ts.
     const policy = await selectPolicyForUpdate(tx, policyId)
     if (!policy) throw new PolicyNotFoundError(policyId)
 
@@ -135,26 +244,15 @@ export async function applyEndorsement(
       return loadEndorsementResult(tx, command.idempotency_key, 'duplicate ignored')
     }
 
-    if (policy.status !== 'active') {
-      throw new PolicyNotActiveError(policyId, policy.status)
-    }
-
     const termStartDays = parseDate(policy.term_start)
     const termEndDays = parseDate(policy.term_end)
     const effectiveDateDays = parseDate(command.effective_date)
 
-    if (effectiveDateDays < termStartDays || effectiveDateDays > termEndDays) {
-      throw new OutOfTermError(command.effective_date, policy.term_start, policy.term_end)
-    }
-
-    const { rows: latestRows } = await tx.query<{ effective_date: string }>(
-      'SELECT effective_date FROM endorsements WHERE policy_id = $1 ORDER BY policy_seq DESC LIMIT 1',
-      [policyId],
-    )
-    const latest = latestRows[0]
-    if (latest && effectiveDateDays < parseDate(latest.effective_date)) {
-      throw new OutOfOrderEndorsementError(command.effective_date, latest.effective_date)
-    }
+    await assertEndorsementApplicable(tx, policy, command, {
+      termStartDays,
+      termEndDays,
+      effectiveDateDays,
+    })
 
     const previousAnnualPremiumCents = Number(policy.annual_premium_cents)
     const deltaCents = prorate({
@@ -203,66 +301,13 @@ export async function applyEndorsement(
     )
 
     if (deltaCents !== 0) {
-      const documentType = deltaCents > 0 ? 'endorsement_adjustment' : 'premium_credit'
-      const amountCents = Math.abs(deltaCents)
-
-      const { rows: billingDocRows } = await tx.query<{ billing_document_id: string }>(
-        `INSERT INTO billing_documents
-           (policy_id, endorsement_id, document_type, amount_cents, currency, due_date)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING billing_document_id`,
-        [
-          policyId,
-          command.idempotency_key,
-          documentType,
-          amountCents,
-          policy.currency,
-          command.effective_date,
-        ],
-      )
-      const billingDocumentId = billingDocRows[0]?.billing_document_id
-      if (!billingDocumentId) throw new Error('billing_documents insert returned no id')
-
-      // Only charges are payable (ADR-0007) -- a premium credit stays out of the sweep entirely,
-      // and cash never settles it.
-      if (documentType === 'endorsement_adjustment') {
-        const remainders = await loadUnappliedPaymentRemainders(tx, policyId)
-        const { applications } = sweepRemainders(
-          amountCents,
-          remainders.map((r) => ({
-            paymentId: r.payment_id,
-            remainderCents: Number(r.remainder_cents),
-          })),
-        )
-        await insertPaymentApplications(
-          tx,
-          applications.map((a) => ({
-            paymentId: a.paymentId,
-            billingDocumentId,
-            amountCents: a.amountCents,
-          })),
-        )
-      }
-
-      const { rows: txRows } = await tx.query<{ ledger_transaction_id: string }>(
-        `INSERT INTO ledger_transactions (policy_id, source_type, source_id, description)
-         VALUES ($1, 'endorsement', $2, $3)
-         RETURNING ledger_transaction_id`,
-        [
-          policyId,
-          command.idempotency_key,
-          `Premium delta for endorsement ${command.idempotency_key}`,
-        ],
-      )
-      const ledgerTransactionId = txRows[0]?.ledger_transaction_id
-      if (!ledgerTransactionId) throw new Error('ledger_transactions insert returned no id')
-
-      for (const entry of postEndorsement(deltaCents)) {
-        await tx.query(
-          'INSERT INTO ledger_entries (ledger_transaction_id, account_code, amount_cents, currency) VALUES ($1, $2, $3, $4)',
-          [ledgerTransactionId, entry.account, entry.amountCents, policy.currency],
-        )
-      }
+      await issueBillingDocumentAndPost(tx, {
+        policyId,
+        endorsementId: command.idempotency_key,
+        deltaCents,
+        currency: policy.currency,
+        effectiveDate: command.effective_date,
+      })
     }
 
     return loadEndorsementResult(tx, command.idempotency_key, 'applied')

@@ -221,11 +221,14 @@ whoever administers the database) and the chain is _evidence_ (arithmetic, verif
 with `sha256sum` and no access to this database or trust in its operators). _What you would do:_ export the
 chain periodically to an append-only store this database's own administrators cannot write to.
 
-**No `TRUNCATE` guard** — the trigger is row-level and `TRUNCATE` bypasses it entirely, and the test harness
-depends on `TRUNCATE` between tests. _How you would notice:_ a `TRUNCATE policy_events` in production would
-wipe the chain silently. _What you would do:_ a statement-level `BEFORE TRUNCATE` trigger, deliberately not
-added here because it would also break the test harness; a production deployment would want a role that
-lacks `TRUNCATE` privilege on these tables instead of a trigger.
+**No `TRUNCATE` guard** — the same `refuse_mutation()` trigger backs all four append-only tables
+(`policy_events`, `payment_applications`, `ledger_transactions`, `ledger_entries`), and on every one of them it
+is row-level, so `TRUNCATE` bypasses it entirely; the test harness depends on `TRUNCATE` between tests.
+_How you would notice:_ a `TRUNCATE policy_events` (or any of the other three) in production would wipe that
+table's history silently, with no trigger firing to object. _What you would do:_ a statement-level
+`BEFORE TRUNCATE` trigger on each table, deliberately not added here because it would also break the test
+harness; a production deployment would want a role that lacks `TRUNCATE` privilege on these tables instead of
+a trigger.
 
 **The chain protects recorded events, not the mutable `policies` row** — `policy_created` replay (comparing
 the recomputed premium against the live `policies.annual_premium_cents`) is the _mitigation_, not a

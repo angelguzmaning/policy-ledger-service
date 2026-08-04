@@ -11,6 +11,7 @@ benefits.
 Source: [`docs/adr/0001-epoch-day-dates-and-hash-the-bytes-you-stored.md`](adr/0001-epoch-day-dates-and-hash-the-bytes-you-stored.md#known-limitations) ([#5](https://github.com/angelguzmaning/policy-ledger-service/issues/5))
 
 - **A future migration that re-derives `recorded_at` from a parsed `timestamptz` instead of carrying the original string forward silently invalidates every hash from that point on.**
+- **`src/server/domain/dates.ts` hand-rolls civil-calendar arithmetic instead of using a date library** — a future `date-fns` adoption needs `@date-fns/utc`'s `UTCDate` (or `Temporal.PlainDate`), since plain `date-fns` is `Date`-based and would reintroduce the timezone dependency this decision exists to avoid.
 
 ## Ledger model and chart of accounts
 
@@ -40,7 +41,7 @@ Source: [`docs/adr/0005-hash-chain-design.md`](adr/0005-hash-chain-design.md#kno
 
 - **Per-policy chains cannot detect wholesale deletion of a policy's events, nor tail truncation** — what remains verifies clean.
 - **Append-only triggers are droppable by the table owner, and migrations run as owner** — a well-meaning backfill can rewrite history.
-- **No `TRUNCATE` guard** — the trigger is row-level and `TRUNCATE` bypasses it; the test harness depends on `TRUNCATE`.
+- **No `TRUNCATE` guard on any of the four append-only tables** (`policy_events`, `payment_applications`, `ledger_transactions`, `ledger_entries`) — their shared trigger is row-level and `TRUNCATE` bypasses it; the test harness depends on `TRUNCATE`.
 - **The chain protects recorded events, not the mutable `policies` row** — `policy_created` replay is the mitigation, not a guarantee.
 - **`hash_version` exists so the scheme can rotate** — a migration that rewrites historical hashes instead of versioning them silently destroys the evidence.
 - **Full-chain verification runs on every request** — a long-lived policy would need checkpointing.
@@ -56,6 +57,7 @@ Source: [`docs/spec/api-contract.md`](spec/api-contract.md#known-limitations), [
 - **No rate limiting or payload size cap** — an oversized body reaches Zod before rejection.
 - **The 400/422 split is a two-way rule; a future endpoint may need a third bucket** the rule doesn't currently name.
 - **`external_payment_id` uniqueness is global, not scoped per policy** — same risk shape as the idempotency-key scope limitation above.
+- **A back-dated endorsement is rejected outright, not reconciled** — accepting one would mean recomputing every later proration and issuing compensating billing documents and ledger entries, a correction workflow that does not exist.
 
 ## Schema and transaction boundaries
 

@@ -82,3 +82,13 @@ break point, confirm via `git blame`/deploy history that a migration ran in the 
 `recorded_at` from a pre-migration backup rather than attempting to "fix" the hash forward. The
 `hash_version` column (ADR-0005) exists precisely so a genuine scheme change can be versioned instead of
 silently rewriting history.
+
+**`src/server/domain/dates.ts` hand-rolls civil-calendar arithmetic instead of using a library.** A future
+improvement would reach for `date-fns`, but plain `date-fns` is `Date`-based and would reintroduce exactly the
+local-timezone dependency this ADR exists to avoid. The viable forms are `@date-fns/utc`'s `UTCDate` (a `Date`
+subclass pinned to UTC), `date-fns` confined to edge-of-system formatting that never touches the domain core, or
+`Temporal.PlainDate` once it is baseline in the Node versions this service targets. **How you would notice:**
+nothing forces this — `daysFromCivil`/`parseDate` are ~40 lines, unit-tested, and correct; the cost is only that
+a maintainer unfamiliar with Howard Hinnant's algorithm has to read it instead of recognizing a library call.
+**What you would do:** swap in `@date-fns/utc` or `Temporal.PlainDate` behind the same `parseDate`/epoch-day
+signature so the domain core's callers see no change.

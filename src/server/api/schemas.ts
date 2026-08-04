@@ -11,15 +11,22 @@ import {
   type InvalidRequestIssue,
 } from '@/server/errors'
 
+// Same shapes are duplicated as SQL `CHECK`s in migrations/0001-0002 -- that duplication stays
+// (the migrations are the independent DB-side guard), but any future change to a shape here
+// belongs there too.
+const Identifier = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const IsoInstant = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
+
 export const PolicyParams = z.strictObject({
-  policyId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  policyId: Identifier,
 })
 
 export const EndorsementBody = z.strictObject({
   type: z.literal('endorsement.requested').optional(),
   policy_id: z.string().optional(),
-  idempotency_key: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
-  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  idempotency_key: Identifier,
+  effective_date: IsoDate,
   new_annual_premium_cents: z.int().positive(),
   reason: z.string().min(1).max(500).optional(),
 })
@@ -27,11 +34,11 @@ export const EndorsementBody = z.strictObject({
 export const PaymentBody = z.strictObject({
   type: z.literal('payment.received').optional(),
   policy_id: z.string().optional(),
-  idempotency_key: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
-  external_payment_id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+  idempotency_key: Identifier,
+  external_payment_id: Identifier,
   amount_cents: z.int().positive(),
   currency: z.string().regex(/^[A-Z]{3}$/),
-  received_at: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+  received_at: IsoInstant,
 })
 
 export type EndorsementCommand = Omit<z.infer<typeof EndorsementBody>, 'type' | 'policy_id'>

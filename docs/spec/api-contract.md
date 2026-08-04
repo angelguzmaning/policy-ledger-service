@@ -745,3 +745,11 @@ to the client, where locale lives.
 **No request-level rate limiting or payload size cap beyond Next's default.** A single oversized body reaches Zod
 before it is rejected. _How you would notice:_ memory pressure on the route handlers. _What you would do:_ a body
 size limit in middleware; out of scope here as the brief excludes production hardening.
+
+**A back-dated endorsement is rejected outright, not reconciled.** `OutOfOrderEndorsement` fires whenever
+`effective_date` is earlier than the latest applied endorsement's, with no path to accept it. Accepting one would
+mean recomputing every later proration and issuing compensating billing documents and ledger entries — a
+correction workflow this service does not implement. _How you would notice:_ an upstream that occasionally submits
+endorsements out of receipt order sees a steady trickle of `422`s it cannot self-resolve by retrying.
+_What you would do:_ a dedicated reconciliation endpoint that reprocesses the affected chain of endorsements under
+the policy lock, rather than trying to make the single-endorsement path handle it.

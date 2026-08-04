@@ -7,6 +7,10 @@
 // `Math.round(-0.5) === -0`, which would flip the sign of an exact-half
 // negative result.
 
+/**
+ * `*Days` fields are integer epoch-day counts from `parseDate` (src/server/domain/dates.ts),
+ * not `Date` objects and not calendar dates -- the `Days` suffix names the unit, not the type.
+ */
 export interface ProrateInput {
   previousAnnualPremiumCents: number
   newAnnualPremiumCents: number
