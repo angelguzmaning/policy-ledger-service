@@ -125,6 +125,11 @@ for the latter two, that key _is_ the idempotency key), server-minted `uuid` whe
 database names it, composite where position _is_ identity (`policy_events (policy_id, seq)`), `bigserial`
 for a gap-tolerant log (`inbound_requests`).
 
+**The diagram below is abridged**: each entity lists only the columns that carry a decision this README
+or an ADR argues for, not the full row. The complete DDL — every column, type, default, and constraint —
+is [`docs/spec/schema-and-transactions.md` §DDL](docs/spec/schema-and-transactions.md#ddl), which is
+itself a transcription of `migrations/0001-0005`.
+
 ```mermaid
 erDiagram
     policies ||--o{ policy_events : "chain, one per policy"
@@ -140,6 +145,7 @@ erDiagram
 
     policies {
         text policy_id PK "POL-1001"
+        text status "active | cancelled | expired -- gates PolicyNotActive"
         bigint annual_premium_cents "mutable: current premium"
         char currency "CHECK IN ('USD')"
         date term_start
@@ -191,6 +197,8 @@ erDiagram
         bigserial inbound_request_id PK "gaps harmless"
         text policy_id "deliberately NOT a FK"
         text outcome "accepted | rejected"
+        integer status_code "the alerted-on field (§9)"
+        text error_code "NULL when accepted"
     }
 ```
 

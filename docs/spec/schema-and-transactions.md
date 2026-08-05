@@ -448,6 +448,10 @@ would fail.
 
 ## Entity-relationship diagram
 
+**Abridged on purpose**: each entity lists only the columns that carry a decision argued for above, not
+the full row — `endorsements` shows 3 of its 11, `inbound_requests` 5 of its 9. [§DDL](#ddl) above is the
+complete definition; the migrations themselves are the authority.
+
 ```mermaid
 erDiagram
     policies ||--o{ policy_events : "chain, one per policy"
@@ -463,6 +467,7 @@ erDiagram
 
     policies {
         text policy_id PK "POL-1001"
+        text status "active | cancelled | expired -- gates PolicyNotActive"
         bigint annual_premium_cents "mutable: current premium"
         char currency "CHECK IN ('USD')"
         date term_start
@@ -514,6 +519,8 @@ erDiagram
         bigserial inbound_request_id PK "gaps harmless"
         text policy_id "deliberately NOT a FK"
         text outcome "accepted | rejected"
+        integer status_code "written on every outcome; the alerted-on field"
+        text error_code "NULL when accepted"
     }
 ```
 
